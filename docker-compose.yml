@@ -1,0 +1,135 @@
+# Base service definitions with anchors for individual services
+x-service-defs:
+  user-service-name: &user-name user-service
+  user-service-port: &user-port 3000
+  threshold-service-name: &threshold-name threshold-service
+  threshold-service-port: &threshold-port 3000
+  smart-furniture-hookup-service-name: &smart-furniture-hookup-name smart-furniture-hookup-service
+  smart-furniture-hookup-service-port: &smart-furniture-hookup-port 3000
+  mongodb-name: &mongodb-name mongodb
+  mongodb-port: &mongodb-port 27017
+
+# user-service environment variables
+x-user-env: &user-env
+  NAME: *user-name
+  PORT: *user-port
+  MONGODB_HOST: *mongodb-name
+  MONGODB_PORT: *mongodb-port
+  MONGO_DB: *user-name
+  JWT_SECRET: ${JWT_SECRET}
+  JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+  JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN}
+  RESET_CODE: ${RESET_CODE}
+
+
+# threshold-service environment variables
+x-threshold-env: &threshold-env
+  NAME: *threshold-name
+  PORT: *threshold-port
+  MONGODB_HOST: *mongodb-name
+  MONGODB_PORT: *mongodb-port
+  MONGO_DB: *threshold-name
+
+# smart-furniture-hookup-service environment variables
+x-smart-furniture-hookup-env: &smart-furniture-hookup-env
+  NAME: *smart-furniture-hookup-name
+  PORT: *smart-furniture-hookup-port
+  MONGODB_HOST: *mongodb-name
+  MONGODB_PORT: *mongodb-port
+  MONGO_DB: *smart-furniture-hookup-name
+
+services:
+
+  user-service:
+    image: ghcr.io/energyconsumptionoptimizer/user-service:latest
+    container_name: user-service
+    restart: unless-stopped
+    environment:
+      <<: *user-env
+    ports:
+      - "3001:3000"
+    depends_on:
+      - mongodb
+    networks:
+      - internal
+      - external
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  smart-furniture-hookup-service:
+    image: ghcr.io/energyconsumptionoptimizer/smart-furniture-hookup-service:latest
+    container_name: smart-furniture-hookup-service
+    restart: unless-stopped
+    environment:
+      <<: *smart-furniture-hookup-env
+    ports:
+      - "3002:3000"
+    depends_on:
+      - mongodb
+    networks:
+      - internal
+      - external
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  threshold-service:
+    image: ghcr.io/energyconsumptionoptimizer/threshold-service:latest
+    container_name: threshold-service
+    restart: unless-stopped
+    environment:
+      <<: *threshold-env
+    ports:
+      - "3003:3000"
+    depends_on:
+      - mongodb
+    networks:
+      - internal
+      - external
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  mongodb:
+    ports:
+      - "27017:27017"
+    build:
+      context: ./mongodb
+      dockerfile: Dockerfile
+    image: mymongo
+    container_name: mongodb
+    command: [ "docker-entrypoint.sh", "mongod" ]
+    restart: always
+    healthcheck:
+      test: |
+        host=`hostname --ip-address || echo '127.0.0.1'`;
+        mongo --quiet $${host}/test --eval 'quit(db.runCommand({ ping: 1 }).ok ? 0 : 2)' && echo 0 || echo 1
+      interval: 5s
+      retries: 3
+    networks:
+      - internal
+      - external
+
+networks:
+  internal:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: "br-eco-int1"
+      com.docker.network.enable_ipv6: "false"
+  external:
+    driver: bridge
+    internal: false
+    driver_opts:
+      com.docker.network.bridge.name: "br-eco-ext1"
+      com.docker.network.enable_ipv6: "false"
