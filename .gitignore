@@ -1,0 +1,10 @@
+# IDEs and editors
+/.idea/
+/.vscode/
+/*.sublime-workspace
+/*.sublime-project
+
+# Repo
+/src/
+/secrets/
+.env
