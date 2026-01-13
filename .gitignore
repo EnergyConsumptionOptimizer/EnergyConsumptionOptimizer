@@ -1,0 +1,15 @@
+# IDE - JetBrains
+/.idea/
+/.vscode/
+
+# Repo
+/src/
+/secrets/
+
+# Docker
+docker-compose.override.yml
+
+# Environment files
+.env
+
+
