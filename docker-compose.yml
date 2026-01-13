@@ -1,0 +1,218 @@
+name: eco
+
+# Common Variables
+x-service-defs:
+  user-service-name: &user-name user
+  user-service-port: &user-port 3000
+  threshold-service-name: &threshold-name threshold
+  threshold-service-port: &threshold-port 3000
+  forecast-service-name: &forecast-name forecast
+  forecast-service-port: &forecast-port 3000
+  frontend-service-name: &frontend-name frontend
+  frontend-service-port: &frontend-port 80
+  alert-service-name: &alert-name alert
+  alert-service-port: &alert-port 3000
+  mongodb-name: &mongodb-name mongodb
+  mongodb-port: &mongodb-port 27017
+
+x-healthcheck: &common-healthcheck
+  test: ["CMD-SHELL", "wget -q --spider http://localhost:$${PORT}/health || exit 1"]
+  interval: 5s
+  timeout: 3s
+  retries: 5
+  start_period: 2s
+
+x-logging: &common-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Service Environment Variables
+x-gateway-env: &gateway-env
+  USER_HOST: *user-name
+  USER_PORT: *user-port
+  THRESHOLD_HOST: *threshold-name
+  THRESHOLD_PORT: *threshold-port
+  FORECAST_HOST: *forecast-name
+  FORECAST_PORT: *forecast-port
+  ALERT_HOST: *alert-name
+  ALERT_PORT: *alert-port
+  FRONTEND_HOST: *frontend-name
+  FRONTEND_PORT: *frontend-port
+
+x-user-env: &user-env
+  NAME: *user-name
+  PORT: *user-port
+  MONGODB_HOST: *mongodb-name
+  MONGODB_PORT: *mongodb-port
+  MONGO_DB: *user-name
+  JWT_SECRET: ${JWT_SECRET}
+  JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+  JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN}
+  RESET_CODE: ${RESET_CODE}
+
+x-threshold-env: &threshold-env
+  NAME: *threshold-name
+  PORT: *threshold-port
+  MONGODB_HOST: *mongodb-name
+  MONGODB_PORT: *mongodb-port
+  MONGO_DB: *threshold-name
+  USER_SERVICE_HOST: *user-name
+  USER_SERVICE_PORT: *user-port
+
+x-forecast-env: &forecast-env
+  NAME: *forecast-name
+  PORT: *forecast-port
+  MONGODB_HOST: *mongodb-name
+  MONGODB_PORT: *mongodb-port
+  MONGO_DB: *forecast-name
+  USER_SERVICE_HOST: *user-name
+  USER_SERVICE_PORT: *user-port
+
+x-alert-env: &alert-env
+  NAME: *alert-name
+  PORT: *alert-port
+  MONGODB_HOST: *mongodb-name
+  MONGODB_PORT: *mongodb-port
+  MONGO_DB: *alert-name
+  USER_SERVICE_HOST: *user-name
+  USER_SERVICE_PORT: *user-port
+
+# Services
+services:
+
+  gateway:
+    container_name: api-gateway
+    build: ./gateway
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - internal
+      - external
+    environment:
+      <<: *gateway-env
+    depends_on:
+      frontend:
+        condition: service_healthy
+      user:
+        condition: service_healthy
+      forecast:
+        condition: service_healthy
+      alert:
+        condition: service_healthy
+    logging: *common-logging
+
+  frontend:
+    container_name: frontend
+    image: ghcr.io/energyconsumptionoptimizer/frontend:latest
+    restart: unless-stopped
+    expose:
+      - *frontend-port
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+    logging: *common-logging
+
+  user:
+    container_name: user-service
+    image: ghcr.io/energyconsumptionoptimizer/user-service:latest
+    restart: unless-stopped
+    expose:
+      - *user-port
+    networks:
+      - internal
+    environment:
+      <<: *user-env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck: *common-healthcheck
+    logging: *common-logging
+
+  threshold:
+    container_name: threshold-service
+    image: ghcr.io/energyconsumptionoptimizer/threshold-service:latest
+    restart: unless-stopped
+    expose:
+      - *threshold-port
+    networks:
+      - internal
+    environment:
+      <<: *threshold-env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck: *common-healthcheck
+    logging: *common-logging
+
+  forecast:
+    container_name: forecast-service
+    image: ghcr.io/energyconsumptionoptimizer/forecast-service:latest
+    restart: unless-stopped
+    expose:
+      - *forecast-port
+    networks:
+      - internal
+    environment:
+      <<: *forecast-env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck: *common-healthcheck
+    logging: *common-logging
+
+  alert:
+    container_name: alert-service
+    image: ghcr.io/energyconsumptionoptimizer/alert-service:latest
+    restart: unless-stopped
+    expose:
+      - *alert-port
+    networks:
+      - internal
+    environment:
+      <<: *alert-env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck: *common-healthcheck
+    logging: *common-logging
+
+  mongodb:
+    container_name: mongodb
+    image: mymongo
+    build:
+      context: ./mongodb
+      dockerfile: Dockerfile
+    restart: always
+    expose:
+      - *mongodb-port
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging: *common-logging
+
+# Networks
+networks:
+  internal:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: "br-eco-int1"
+      com.docker.network.enable_ipv6: "false"
+  external:
+    driver: bridge
+    internal: false
+    driver_opts:
+      com.docker.network.bridge.name: "br-eco-ext1"
+      com.docker.network.enable_ipv6: "false"
