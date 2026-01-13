@@ -1,0 +1,71 @@
+worker_processes auto;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include mime.types;
+    default_type application/octet-stream;
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+
+    upstream user_service {
+        server ${USER_HOST}:${USER_PORT};
+    }
+
+    upstream threshold_service {
+        server ${THRESHOLD_HOST}:${THRESHOLD_PORT};
+    }
+
+    upstream forecast_service {
+        server ${FORECAST_HOST}:${FORECAST_PORT};
+    }
+
+    upstream alert_service {
+        server ${ALERT_HOST}:${ALERT_PORT};
+    }
+
+    upstream frontend {
+        server ${FRONTEND_HOST}:${FRONTEND_PORT};
+    }
+
+    map $http_origin $cors_origin {
+        default "";
+        "~^https?://.*$" $http_origin;
+    }
+
+    server {
+        listen 80;
+
+        location / {
+            proxy_pass http://frontend;
+            include /etc/nginx/snippets/proxy_params.conf;
+        }
+
+        location /user/ {
+            include /etc/nginx/snippets/cors.conf;
+            proxy_pass http://user_service/api/;
+            include /etc/nginx/snippets/proxy_params.conf;
+        }
+
+        location /threshold/ {
+            include /etc/nginx/snippets/cors.conf;
+            proxy_pass http://threshold_service/api/;
+            include /etc/nginx/snippets/proxy_params.conf;
+        }
+
+        location /forecast/ {
+            include /etc/nginx/snippets/cors.conf;
+            proxy_pass http://forecast_service/api/;
+            include /etc/nginx/snippets/proxy_params.conf;
+        }
+
+        location /alert/ {
+            include /etc/nginx/snippets/cors.conf;
+            proxy_pass http://alert_service/api/;
+            include /etc/nginx/snippets/proxy_params.conf;
+        }
+    }
+}
