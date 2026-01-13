@@ -1,7 +1,9 @@
 services:
 
   frontend:
+    image: frontend:local-dev
     build:
+      context: ../frontend
       target: builder # Target the Node stage, not the final Nginx stage
     volumes:
       - ../frontend:/app
@@ -12,6 +14,9 @@ services:
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 80"
 
   user:
+    image: user:local-dev
+    build:
+      context: ../user-service
     ports:
       - "3001:3000"
     volumes:
@@ -21,6 +26,9 @@ services:
     command: sh -c "npm install && npm run start:dev"
 
   threshold:
+    image: threshold:local-dev
+    build:
+      context: ../threshold-service
     ports:
       - "3002:3000"
     volumes:
@@ -29,6 +37,9 @@ services:
     command: sh -c "npm install && npm run start:dev"
 
   alert:
+    image: alert:local-dev
+    build:
+      context: ../alert-service
     ports:
       - "3004:3000"
     volumes:
@@ -37,7 +48,9 @@ services:
     command: sh -c "npm install && npm run start:dev"
 
   forecast:
+    image: forecast:local-dev
     build:
+      context: ../forecast-service
       target: build # Target the JDK stage to allow compilation
     ports:
       - "3003:3000"
