@@ -1,0 +1,74 @@
+services:
+
+  frontend:
+    build:
+      target: builder # Target the Node stage, not the final Nginx stage
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules # Prevent host node_modules from overwriting container's
+    ports:
+      - "8080:80"
+    # Install deps on start and run Vite with host binding (0.0.0.0)
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 80"
+
+  user:
+    ports:
+      - "3001:3000"
+    volumes:
+      - ../user-service:/app
+      - /app/node_modules
+    # Use 'sh -c' to install dev dependencies (like ts-node-dev) before starting
+    command: sh -c "npm install && npm run start:dev"
+
+  threshold:
+    ports:
+      - "3002:3000"
+    volumes:
+      - ../threshold-service:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run start:dev"
+
+  alert:
+    ports:
+      - "3004:3000"
+    volumes:
+      - ../alert-service:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run start:dev"
+
+  forecast:
+    build:
+      target: build # Target the JDK stage to allow compilation
+    ports:
+      - "3003:3000"
+    volumes:
+      - ../forecast-service:/usr/src/app
+      - gradle-cache:/home/gradle/.gradle
+    # Run with --continuous to enable Ktor Hot Reload
+    command: ./gradlew run --continuous
+
+  gateway:
+    volumes:
+      - ./gateway:/app
+    # Start immediately in Dev, do not wait for strict healthchecks
+    depends_on:
+      frontend:
+        condition: service_started
+      user:
+        condition: service_started
+      forecast:
+        condition: service_started
+      alert:
+        condition: service_started
+
+  mongodb:
+    ports:
+      - "27017:27017"
+
+networks:
+  internal:
+    driver: bridge
+    internal: false # Enable Internet access for package downloads (npm/gradle)
+
+volumes:
+  gradle-cache:
