@@ -14,6 +14,8 @@ x-service-defs:
   alert-service-port: &alert-port 3000
   mongodb-name: &mongodb-name mongodb
   mongodb-port: &mongodb-port 27017
+  influxdb-name: &influxdb-name influxdb
+  influxdb-port: &influxdb-port 8086
 
 x-healthcheck: &common-healthcheck
   test: ["CMD-SHELL", "wget -q --spider http://localhost:$${PORT}/health || exit 1"]
@@ -48,8 +50,8 @@ x-user-env: &user-env
   MONGODB_PORT: *mongodb-port
   MONGO_DB: *user-name
   JWT_SECRET: ${JWT_SECRET}
-  JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
-  JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN}
+  JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+  JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
   RESET_CODE: ${RESET_CODE}
 
 x-threshold-env: &threshold-env
@@ -78,6 +80,15 @@ x-alert-env: &alert-env
   MONGO_DB: *alert-name
   USER_SERVICE_HOST: *user-name
   USER_SERVICE_PORT: *user-port
+
+x-influx-env: &influx-env
+  DOCKER_INFLUXDB_INIT_MODE: setup
+  DOCKER_INFLUXDB_INIT_USERNAME: ${DOCKER_INFLUXDB_INIT_USERNAME:?missing DOCKER_INFLUXDB_INIT_USERNAME}
+  DOCKER_INFLUXDB_INIT_PASSWORD: ${DOCKER_INFLUXDB_INIT_PASSWORD:?missing DOCKER_INFLUXDB_INIT_PASSWORD}
+  DOCKER_INFLUXDB_INIT_ORG: ${DOCKER_INFLUXDB_INIT_ORG:-eco}
+  DOCKER_INFLUXDB_INIT_BUCKET: ${DOCKER_INFLUXDB_INIT_BUCKET:-default}
+  INFLUXD_LOG_LEVEL: error
+  INFLUXD_HTTP_LOG_ENABLED: "false"
 
 # Services
 services:
@@ -196,10 +207,26 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping')"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 3
+    command:
+      - "mongod"
+      - "--quiet"
+    logging: *common-logging
+
+  influxdb:
+    container_name: influxdb
+    image: influxdb:2.7-alpine
+    restart: unless-stopped
+    expose:
+      - *influxdb-port
+    networks:
+      - internal
+    environment:
+      <<: *influx-env
+    healthcheck: *common-healthcheck
     logging: *common-logging
 
 # Networks
