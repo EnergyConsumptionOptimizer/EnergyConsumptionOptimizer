@@ -12,6 +12,12 @@ x-service-defs:
   frontend-service-port: &frontend-port 80
   alert-service-name: &alert-name alert
   alert-service-port: &alert-port 3000
+  monitoring-service-name: &monitoring-name monitoring
+  monitoring-service-port: &monitoring-port 3000
+  map-service-name: &map-name map
+  map-service-port: &map-port 3000
+  smart-furniture-hookup-service-name: &hookup-name hookup
+  smart-furniture-hookup-service-port: &hookup-port 3000
   mongodb-name: &mongodb-name mongodb
   mongodb-port: &mongodb-port 27017
   influxdb-name: &influxdb-name influxdb
@@ -42,6 +48,12 @@ x-gateway-env: &gateway-env
   ALERT_PORT: *alert-port
   FRONTEND_HOST: *frontend-name
   FRONTEND_PORT: *frontend-port
+  MONITORING_HOST: *monitoring-name
+  MONITORING_PORT: *monitoring-port
+  MAP_HOST: *map-name
+  MAP_PORT: *map-port
+  HOOKUP_HOST: *hookup-name
+  HOOKUP_PORT: *hookup-port
 
 x-user-env: &user-env
   NAME: *user-name
@@ -81,12 +93,43 @@ x-alert-env: &alert-env
   USER_SERVICE_HOST: *user-name
   USER_SERVICE_PORT: *user-port
 
+x-monitoring-env: &monitoring-env
+  NAME: *monitoring-name
+  PORT: *monitoring-port
+  INFLUXDB_HOST: *influxdb-name
+  INFLUXDB_PORT: *influxdb-port
+  INFLUX_URL: "http://influxdb:8086"
+  INFLUX_ORG: ${DOCKER_INFLUXDB_INIT_ORG:-eco}
+  INFLUX_BUCKET: ${DOCKER_INFLUXDB_INIT_BUCKET:-monitoring}
+  INFLUX_TOKEN: ${DOCKER_INFLUXDB_INIT_ADMIN_TOKEN:?missing DOCKER_INFLUXDB_INIT_ADMIN_TOKEN}
+  USER_SERVICE_HOST: *user-name
+  USER_SERVICE_PORT: *user-port
+
+x-map-env: &map-env
+  NAME: *map-name
+  PORT: *map-port
+  INFLUXDB_HOST: *influxdb-name
+  INFLUXDB_PORT: *influxdb-port
+  USER_SERVICE_HOST: *user-name
+  USER_SERVICE_PORT: *user-port
+  HOOKUP_HOST: *hookup-name
+  HOOKUP_PORT: *hookup-port
+
+x-hookup-env: &hookup-env
+  NAME: *hookup-name
+  PORT: *hookup-port
+  INFLUXDB_HOST: *influxdb-name
+  INFLUXDB_PORT: *influxdb-port
+  USER_SERVICE_HOST: *user-name
+  USER_SERVICE_PORT: *user-port
+
 x-influx-env: &influx-env
   DOCKER_INFLUXDB_INIT_MODE: setup
   DOCKER_INFLUXDB_INIT_USERNAME: ${DOCKER_INFLUXDB_INIT_USERNAME:?missing DOCKER_INFLUXDB_INIT_USERNAME}
   DOCKER_INFLUXDB_INIT_PASSWORD: ${DOCKER_INFLUXDB_INIT_PASSWORD:?missing DOCKER_INFLUXDB_INIT_PASSWORD}
   DOCKER_INFLUXDB_INIT_ORG: ${DOCKER_INFLUXDB_INIT_ORG:-eco}
-  DOCKER_INFLUXDB_INIT_BUCKET: ${DOCKER_INFLUXDB_INIT_BUCKET:-default}
+  DOCKER_INFLUXDB_INIT_BUCKET: ${DOCKER_INFLUXDB_INIT_BUCKET:-monitoring}
+  DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${DOCKER_INFLUXDB_INIT_ADMIN_TOKEN:?missing DOCKER_INFLUXDB_INIT_ADMIN_TOKEN}
   INFLUXD_LOG_LEVEL: error
   INFLUXD_HTTP_LOG_ENABLED: "false"
 
@@ -112,6 +155,8 @@ services:
       forecast:
         condition: service_healthy
       alert:
+        condition: service_healthy
+      monitoring:
         condition: service_healthy
     logging: *common-logging
 
@@ -195,6 +240,51 @@ services:
     healthcheck: *common-healthcheck
     logging: *common-logging
 
+  monitoring:
+    container_name: monitoring-service
+    image: ghcr.io/energyconsumptionoptimizer/monitoring-service:latest
+    restart: unless-stopped
+    expose:
+      - *monitoring-port
+    networks:
+      - internal
+    environment:
+      <<: *monitoring-env
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    logging: *common-logging
+
+  map:
+    container_name: map-service
+    image: ghcr.io/energyconsumptionoptimizer/map-service:latest
+    restart: unless-stopped
+    expose:
+      - *map-port
+    networks:
+      - internal
+    environment:
+      <<: *map-env
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    logging: *common-logging
+
+  hookup:
+    container_name: hookup-service
+    image: ghcr.io/energyconsumptionoptimizer/smart-furniture-hookup-service:latest
+    restart: unless-stopped
+    expose:
+      - *hookup-port
+    networks:
+      - internal
+    environment:
+      <<: *hookup-env
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    logging: *common-logging
+
   mongodb:
     container_name: mongodb
     image: mymongo
@@ -226,7 +316,11 @@ services:
       - internal
     environment:
       <<: *influx-env
-    healthcheck: *common-healthcheck
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
     logging: *common-logging
 
 # Networks

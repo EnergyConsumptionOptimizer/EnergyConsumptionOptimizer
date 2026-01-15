@@ -4,7 +4,10 @@ VARS='$USER_HOST $USER_PORT \
       $THRESHOLD_HOST $THRESHOLD_PORT \
       $FORECAST_HOST $FORECAST_PORT \
       $ALERT_HOST $ALERT_PORT \
-      $FRONTEND_HOST $FRONTEND_PORT'
+      $FRONTEND_HOST $FRONTEND_PORT \
+      $MONITORING_HOST $MONITORING_PORT \
+      $MAP_HOST $MAP_PORT \
+      $HOOKUP_HOST $HOOKUP_PORT '
 
 envsubst "$VARS" < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 

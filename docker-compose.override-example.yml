@@ -1,5 +1,10 @@
 services:
 
+  gateway:
+    volumes:
+      - ./gateway:/app
+    # Start immediately in Dev, do not wait for strict healthchecks
+
   frontend:
     image: frontend:local-dev
     build:
@@ -36,17 +41,6 @@ services:
       - /app/node_modules
     command: sh -c "npm install && npm run start:dev"
 
-  alert:
-    image: alert:local-dev
-    build:
-      context: ../alert-service
-    ports:
-      - "3004:3000"
-    volumes:
-      - ../alert-service:/app
-      - /app/node_modules
-    command: sh -c "npm install && npm run start:dev"
-
   forecast:
     image: forecast:local-dev
     build:
@@ -60,27 +54,57 @@ services:
     # Run with --continuous to enable Ktor Hot Reload
     command: ./gradlew run --continuous
 
-  gateway:
-    volumes:
-      - ./gateway:/app
-    # Start immediately in Dev, do not wait for strict healthchecks
-    depends_on:
-      frontend:
-        condition: service_started
-      user:
-        condition: service_started
-      forecast:
-        condition: service_started
-      alert:
-        condition: service_started
-
-  mongodb:
+  alert:
+    image: alert:local-dev
+    build:
+      context: ../alert-service
     ports:
-      - "27017:27017"
+      - "3004:3000"
+    volumes:
+      - ../alert-service:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run start:dev"
+
+  monitoring:
+    image: monitoring:local-dev
+    build:
+      context: ../monitoring-service
+    ports:
+      - "3005:3000"
+    volumes:
+      - ../monitoring-service:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run start:dev"
+
+  map:
+    image: map:local-dev
+    build:
+      context: ../map-service
+    ports:
+      - "3006:3000"
+    volumes:
+      - ../map-service:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run start:dev"
+
+  hookup:
+    image: hookup:local-dev
+    build:
+      context: ../smart-furniture-hookup-service
+    ports:
+      - "3007:3000"
+    volumes:
+      - ../map-service:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run start:dev"
 
   influxdb:
     ports:
       - "8086:8086"
+
+  mongodb:
+    ports:
+      - "27017:27017"
 
 networks:
   internal:

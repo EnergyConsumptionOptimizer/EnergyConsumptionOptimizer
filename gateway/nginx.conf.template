@@ -27,9 +27,22 @@ http {
         server ${ALERT_HOST}:${ALERT_PORT};
     }
 
+    upstream monitoring_service {
+    server ${MONITORING_HOST}:${MONITORING_PORT};
+    }
+
+    upstream map_service {
+    server ${MAP_HOST}:${MAP_PORT};
+    }
+
+    upstream hookup_service {
+    server ${HOOKUP_HOST}:${HOOKUP_PORT};
+    }
+
     upstream frontend {
         server ${FRONTEND_HOST}:${FRONTEND_PORT};
     }
+
 
     map $http_origin $cors_origin {
         default "";
@@ -65,6 +78,24 @@ http {
         location /alert/ {
             include /etc/nginx/snippets/cors.conf;
             proxy_pass http://alert_service/api/;
+            include /etc/nginx/snippets/proxy_params.conf;
+        }
+
+        location /monitoring/ {
+            include /etc/nginx/snippets/cors.conf;
+            proxy_pass http://monitoring_service/api/;
+            include /etc/nginx/snippets/proxy_params.conf;
+        }
+
+        location /map/ {
+            include /etc/nginx/snippets/cors.conf;
+            proxy_pass http://map_service/api/;
+            include /etc/nginx/snippets/proxy_params.conf;
+        }
+
+        location /hookup/ {
+            include /etc/nginx/snippets/cors.conf;
+            proxy_pass http://hookup_service/api/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
     }
