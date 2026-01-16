@@ -49,10 +49,9 @@ services:
       - "3003:3000"
     volumes:
       - ../forecast-service:/usr/src/app
-      - gradle-cache:/home/gradle/.gradle/caches
-      - gradle-wrapper:/home/gradle/.gradle/wrapper
+      - gradle-cache:/home/gradle/.gradle
     # Run with --continuous to enable Ktor Hot Reload
-    command: ./gradlew run --continuous --no-daemon
+    command: ./gradlew run --continuous
 
   alert:
     image: alert:local-dev
