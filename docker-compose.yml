@@ -147,17 +147,6 @@ services:
       - external
     environment:
       <<: *gateway-env
-    depends_on:
-      frontend:
-        condition: service_healthy
-      user:
-        condition: service_healthy
-      forecast:
-        condition: service_healthy
-      alert:
-        condition: service_healthy
-      monitoring:
-        condition: service_healthy
     logging: *common-logging
 
   frontend:

@@ -3,7 +3,6 @@ services:
   gateway:
     volumes:
       - ./gateway:/app
-    # Start immediately in Dev, do not wait for strict healthchecks
 
   frontend:
     image: frontend:local-dev
