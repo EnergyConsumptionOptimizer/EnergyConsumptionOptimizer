@@ -49,9 +49,10 @@ services:
       - "3003:3000"
     volumes:
       - ../forecast-service:/usr/src/app
-      - gradle-cache:/home/gradle/.gradle
+      - gradle-cache:/home/gradle/.gradle/caches
+      - gradle-wrapper:/home/gradle/.gradle/wrapper
     # Run with --continuous to enable Ktor Hot Reload
-    command: ./gradlew run --continuous
+    command: ./gradlew run --continuous --no-daemon
 
   alert:
     image: alert:local-dev
@@ -83,7 +84,8 @@ services:
       - "3006:3000"
     volumes:
       - ../map-service:/app
-      - /app/node_modules
+      - gradle-cache:/home/gradle/.gradle/caches
+      - gradle-wrapper:/home/gradle/.gradle/wrapper
     command: sh -c "npm install && npm run start:dev"
 
   hookup:

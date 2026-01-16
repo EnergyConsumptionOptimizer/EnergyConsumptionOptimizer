@@ -25,9 +25,9 @@ x-service-defs:
 
 x-healthcheck: &common-healthcheck
   test: ["CMD-SHELL", "wget -q --spider http://localhost:$${PORT}/health || exit 1"]
-  interval: 5s
+  interval: 10s
   timeout: 3s
-  retries: 5
+  retries: 3
   start_period: 2s
 
 x-logging: &common-logging

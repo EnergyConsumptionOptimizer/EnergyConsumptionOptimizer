@@ -32,43 +32,35 @@ http {
     }
 
     upstream user_service {
-        server ${USER_HOST}:${USER_PORT} max_fails=3 fail_timeout=10s;
-        keepalive 32;
+        server ${USER_HOST}:${USER_PORT} 
     }
 
     upstream threshold_service {
-        server ${THRESHOLD_HOST}:${THRESHOLD_PORT} max_fails=3 fail_timeout=10s;
-        keepalive 32;
+        server ${THRESHOLD_HOST}:${THRESHOLD_PORT} 
     }
 
     upstream forecast_service {
-        server ${FORECAST_HOST}:${FORECAST_PORT} max_fails=3 fail_timeout=10s;
-        keepalive 32;
+        server ${FORECAST_HOST}:${FORECAST_PORT} 
     }
 
     upstream alert_service {
-        server ${ALERT_HOST}:${ALERT_PORT} max_fails=3 fail_timeout=10s;
-        keepalive 32;
+        server ${ALERT_HOST}:${ALERT_PORT} 
     }
 
     upstream monitoring_service {
-        server ${MONITORING_HOST}:${MONITORING_PORT} max_fails=3 fail_timeout=10s;
-        keepalive 32;
+        server ${MONITORING_HOST}:${MONITORING_PORT}
     }
 
     upstream map_service {
-        server ${MAP_HOST}:${MAP_PORT} max_fails=3 fail_timeout=10s;
-        keepalive 32;
+        server ${MAP_HOST}:${MAP_PORT}
     }
 
     upstream hookup_service {
-        server ${HOOKUP_HOST}:${HOOKUP_PORT} max_fails=3 fail_timeout=10s;
-        keepalive 32;
+        server ${HOOKUP_HOST}:${HOOKUP_PORT} 
     }
 
     upstream frontend {
-        server ${FRONTEND_HOST}:${FRONTEND_PORT} max_fails=3 fail_timeout=10s;
-        keepalive 32;
+        server ${FRONTEND_HOST}:${FRONTEND_PORT} 
     }
 
     server {
@@ -77,7 +69,7 @@ http {
         location /health {
             access_log off;
             add_header Content-Type text/plain;
-            return 200 'healthy';
+            return 200 'OK';
         }
 
         location / {
