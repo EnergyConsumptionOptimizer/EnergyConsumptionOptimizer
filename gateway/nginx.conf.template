@@ -8,8 +8,22 @@ http {
     include mime.types;
     default_type application/octet-stream;
 
+    sendfile on;
+    keepalive_timeout 65;
+
     gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+    gzip_types
+        text/plain
+        text/css
+        application/json
+        application/javascript
+        text/xml
+        application/xml;
+
+    map $http_upgrade $connection_upgrade {
+        default close;
+        upgrade upgrade;
+    }
 
     upstream user_service {
         server ${USER_HOST}:${USER_PORT};
@@ -43,14 +57,20 @@ http {
         server ${FRONTEND_HOST}:${FRONTEND_PORT};
     }
 
-
-    map $http_origin $cors_origin {
-        default "";
-        "~^https?://.*$" $http_origin;
-    }
+    server {
+            listen 80;
+            return 301 https://$host$request_uri;
+        }
 
     server {
-        listen 80;
+        listen 443 ssl;
+        http2 on;
+
+        ssl_certificate     /etc/nginx/certs/server.crt;
+        ssl_certificate_key /etc/nginx/certs/server.key;
+
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
 
         location / {
             proxy_pass http://frontend;
@@ -58,43 +78,36 @@ http {
         }
 
         location /user/ {
-            include /etc/nginx/snippets/cors.conf;
             proxy_pass http://user_service/api/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
 
         location /threshold/ {
-            include /etc/nginx/snippets/cors.conf;
             proxy_pass http://threshold_service/api/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
 
         location /forecast/ {
-            include /etc/nginx/snippets/cors.conf;
             proxy_pass http://forecast_service/api/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
 
         location /alert/ {
-            include /etc/nginx/snippets/cors.conf;
             proxy_pass http://alert_service/api/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
 
         location /monitoring/ {
-            include /etc/nginx/snippets/cors.conf;
             proxy_pass http://monitoring_service/api/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
 
         location /map/ {
-            include /etc/nginx/snippets/cors.conf;
             proxy_pass http://map_service/api/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
 
         location /hookup/ {
-            include /etc/nginx/snippets/cors.conf;
             proxy_pass http://hookup_service/api/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
