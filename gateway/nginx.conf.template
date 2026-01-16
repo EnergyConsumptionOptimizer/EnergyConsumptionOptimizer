@@ -78,37 +78,37 @@ http {
         }
 
         location /user/ {
-            proxy_pass http://user_service/api/;
+            proxy_pass http://user_service/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
 
         location /threshold/ {
-            proxy_pass http://threshold_service/api/;
+            proxy_pass http://threshold_service/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
 
         location /forecast/ {
-            proxy_pass http://forecast_service/api/;
+            proxy_pass http://forecast_service/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
 
         location /alert/ {
-            proxy_pass http://alert_service/api/;
+            proxy_pass http://alert_service/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
 
         location /monitoring/ {
-            proxy_pass http://monitoring_service/api/;
+            proxy_pass http://monitoring_service/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
 
         location /map/ {
-            proxy_pass http://map_service/api/;
+            proxy_pass http://map_service/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
 
         location /hookup/ {
-            proxy_pass http://hookup_service/api/;
+            proxy_pass http://hookup_service/;
             include /etc/nginx/snippets/proxy_params.conf;
         }
     }
