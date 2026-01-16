@@ -9,9 +9,15 @@ http {
     default_type application/octet-stream;
 
     sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
     keepalive_timeout 65;
+    types_hash_max_size 2048;
 
     gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_proxied expired no-cache no-store private auth;
     gzip_types
         text/plain
         text/css
@@ -21,56 +27,58 @@ http {
         application/xml;
 
     map $http_upgrade $connection_upgrade {
-        default close;
+        default keep-alive;
         upgrade upgrade;
     }
 
     upstream user_service {
-        server ${USER_HOST}:${USER_PORT};
+        server ${USER_HOST}:${USER_PORT} max_fails=3 fail_timeout=10s;
+        keepalive 32;
     }
 
     upstream threshold_service {
-        server ${THRESHOLD_HOST}:${THRESHOLD_PORT};
+        server ${THRESHOLD_HOST}:${THRESHOLD_PORT} max_fails=3 fail_timeout=10s;
+        keepalive 32;
     }
 
     upstream forecast_service {
-        server ${FORECAST_HOST}:${FORECAST_PORT};
+        server ${FORECAST_HOST}:${FORECAST_PORT} max_fails=3 fail_timeout=10s;
+        keepalive 32;
     }
 
     upstream alert_service {
-        server ${ALERT_HOST}:${ALERT_PORT};
+        server ${ALERT_HOST}:${ALERT_PORT} max_fails=3 fail_timeout=10s;
+        keepalive 32;
     }
 
     upstream monitoring_service {
-    server ${MONITORING_HOST}:${MONITORING_PORT};
+        server ${MONITORING_HOST}:${MONITORING_PORT} max_fails=3 fail_timeout=10s;
+        keepalive 32;
     }
 
     upstream map_service {
-    server ${MAP_HOST}:${MAP_PORT};
+        server ${MAP_HOST}:${MAP_PORT} max_fails=3 fail_timeout=10s;
+        keepalive 32;
     }
 
     upstream hookup_service {
-    server ${HOOKUP_HOST}:${HOOKUP_PORT};
+        server ${HOOKUP_HOST}:${HOOKUP_PORT} max_fails=3 fail_timeout=10s;
+        keepalive 32;
     }
 
     upstream frontend {
-        server ${FRONTEND_HOST}:${FRONTEND_PORT};
+        server ${FRONTEND_HOST}:${FRONTEND_PORT} max_fails=3 fail_timeout=10s;
+        keepalive 32;
     }
 
     server {
-            listen 80;
-            return 301 https://$host$request_uri;
+        listen 80;
+
+        location /health {
+            access_log off;
+            add_header Content-Type text/plain;
+            return 200 'healthy';
         }
-
-    server {
-        listen 443 ssl;
-        http2 on;
-
-        ssl_certificate     /etc/nginx/certs/server.crt;
-        ssl_certificate_key /etc/nginx/certs/server.key;
-
-        ssl_protocols TLSv1.2 TLSv1.3;
-        ssl_ciphers HIGH:!aNULL:!MD5;
 
         location / {
             proxy_pass http://frontend;

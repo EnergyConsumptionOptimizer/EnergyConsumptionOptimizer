@@ -55,6 +55,10 @@ x-gateway-env: &gateway-env
   HOOKUP_HOST: *hookup-name
   HOOKUP_PORT: *hookup-port
 
+x-frontend-env: &frontend-env
+  NAME: *frontend-name
+  PORT: *frontend-port
+
 x-user-env: &user-env
   NAME: *user-name
   PORT: *user-port
@@ -142,12 +146,17 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
     networks:
       - internal
       - external
     environment:
       <<: *gateway-env
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate -q --spider http://localhost/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     logging: *common-logging
 
   frontend:
@@ -158,12 +167,9 @@ services:
       - *frontend-port
     networks:
       - internal
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:80 || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 2s
+    environment:
+      <<: *frontend-env
+    healthcheck: *common-healthcheck
     logging: *common-logging
 
   user:
