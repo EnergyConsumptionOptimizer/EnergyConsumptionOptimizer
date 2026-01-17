@@ -255,9 +255,8 @@ services:
     depends_on:
       influxdb:
         condition: service_healthy
+    healthcheck: *common-healthcheck
     logging: *common-logging
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   map:
     container_name: map-service
@@ -272,6 +271,7 @@ services:
     depends_on:
       influxdb:
         condition: service_healthy
+    healthcheck: *common-healthcheck
     logging: *common-logging
 
   hookup:
@@ -287,6 +287,7 @@ services:
     depends_on:
       influxdb:
         condition: service_healthy
+    healthcheck: *common-healthcheck
     logging: *common-logging
 
   mongodb:

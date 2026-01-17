@@ -15,7 +15,7 @@ services:
     ports:
       - "8080:80"
     # Install deps on start and run Vite with host binding (0.0.0.0)
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 80"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 80 --strictPort false"
 
   user:
     image: user:local-dev
@@ -82,10 +82,10 @@ services:
     ports:
       - "3006:3000"
     volumes:
-      - ../map-service:/app
-      - gradle-cache:/home/gradle/.gradle/caches
-      - gradle-wrapper:/home/gradle/.gradle/wrapper
-    command: sh -c "npm install && npm run start:dev"
+      - ../map-service:/usr/src/app
+      - gradle-cache:/home/gradle/.gradle
+    # Run with --continuous to enable Ktor Hot Reload
+    command: ./gradlew run --continuous
 
   hookup:
     image: hookup:local-dev
@@ -94,7 +94,7 @@ services:
     ports:
       - "3007:3000"
     volumes:
-      - ../map-service:/app
+      - ../smart-furniture-hookup-service:/app
       - /app/node_modules
     command: sh -c "npm install && npm run start:dev"
 
