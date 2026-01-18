@@ -65,7 +65,7 @@ x-user-env: &user-env
   MONGODB_HOST: *mongodb-name
   MONGODB_PORT: *mongodb-port
   MONGO_DB: *user-name
-  JWT_SECRET: ${JWT_SECRET}
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY}
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
   JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
   RESET_CODE: ${RESET_CODE}
@@ -78,6 +78,10 @@ x-threshold-env: &threshold-env
   MONGO_DB: *threshold-name
   USER_SERVICE_HOST: *user-name
   USER_SERVICE_PORT: *user-port
+  ALERT_SERVICE_HOST: *alert-name
+  ALERT_SERVICE_PORT: *alert-port
+  MONITORING_SERVICE_HOST: *monitoring-name
+  MONITORING_SERVICE_PORT: *monitoring-port
 
 x-forecast-env: &forecast-env
   NAME: *forecast-name
@@ -87,6 +91,12 @@ x-forecast-env: &forecast-env
   MONGO_DB: *forecast-name
   USER_SERVICE_HOST: *user-name
   USER_SERVICE_PORT: *user-port
+  THRESHOLD_SERVICE_HOST: *threshold-name
+  THRESHOLD_SERVICE_PORT: *threshold-port
+  MONITORING_SERVICE_HOST: *monitoring-name
+  MONITORING_SERVICE_PORT: *monitoring-port
+  FORECAST_HOUR: ${FORECAST_HOUR:-00}
+  FORECAST_MINUTE: ${FORECAST_MINUTE:-5}
 
 x-alert-env: &alert-env
   NAME: *alert-name
@@ -102,12 +112,17 @@ x-monitoring-env: &monitoring-env
   PORT: *monitoring-port
   INFLUXDB_HOST: *influxdb-name
   INFLUXDB_PORT: *influxdb-port
-  INFLUX_URL: "http://influxdb:8086"
   INFLUX_ORG: ${DOCKER_INFLUXDB_INIT_ORG:-eco}
   INFLUX_BUCKET: ${DOCKER_INFLUXDB_INIT_BUCKET:-monitoring}
   INFLUX_TOKEN: ${DOCKER_INFLUXDB_INIT_ADMIN_TOKEN:?missing DOCKER_INFLUXDB_INIT_ADMIN_TOKEN}
   USER_SERVICE_HOST: *user-name
   USER_SERVICE_PORT: *user-port
+  THRESHOLD_SERVICE_HOST: *threshold-name
+  THRESHOLD_SERVICE_PORT: *threshold-port
+  HOOKUP_SERVICE_HOST: *hookup-name
+  HOOKUP_SERVICE_PORT: *hookup-port
+  MAP_SERVICE_HOST: *map-name
+  MAP_SERVICE_PORT: *map-port
   EXTERNAL_API_HOST: ${HOST_IP:-localhost}
   EXTERNAL_API_PORT: ${HOST_PORT:-80}
 
@@ -119,19 +134,18 @@ x-map-env: &map-env
   MONGO_DB: *map-name
   USER_SERVICE_HOST: *user-name
   USER_SERVICE_PORT: *user-port
-  HOOKUP_HOST: *hookup-name
-  HOOKUP_PORT: *hookup-port
 
 x-hookup-env: &hookup-env
   NAME: *hookup-name
   PORT: *hookup-port
   MONGODB_HOST: *mongodb-name
   MONGODB_PORT: *mongodb-port
-  MONITORING_SERVICE_HOST: *monitoring-name
-  MONITORING_SERVICE_PORT: *monitoring-port
   MONGO_DB: *hookup-name
   USER_SERVICE_HOST: *user-name
   USER_SERVICE_PORT: *user-port
+  MONITORING_SERVICE_HOST: *monitoring-name
+  MONITORING_SERVICE_PORT: *monitoring-port
+
 
 x-influx-env: &influx-env
   DOCKER_INFLUXDB_INIT_MODE: setup
