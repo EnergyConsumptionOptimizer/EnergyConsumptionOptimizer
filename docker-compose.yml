@@ -257,6 +257,8 @@ services:
         condition: service_healthy
     healthcheck: *common-healthcheck
     logging: *common-logging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   map:
     container_name: map-service
