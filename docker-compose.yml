@@ -267,6 +267,7 @@ services:
       - *monitoring-port
     networks:
       - internal
+      - external
     environment:
       <<: *monitoring-env
     depends_on:
