@@ -1,0 +1,54 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/part-of: eco
+
+resources:
+  - mongo-init-configmap.yaml
+  - databases.yaml
+  - frontend.yaml
+  - user.yaml
+  - threshold.yaml
+  - forecast.yaml
+  - alert.yaml
+  - monitoring.yaml
+  - map.yaml
+  - hookup.yaml
+  - ingress.yaml
+
+configMapGenerator:
+  - name: eco-config
+    literals:
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT="27017"
+      - INFLUXDB_HOST=influxdb
+      - INFLUXDB_PORT="8086"
+      - INFLUX_ORG=eco
+      - INFLUX_BUCKET=monitoring
+      - EXTERNAL_API_HOST=localhost
+      - EXTERNAL_API_PORT="80"
+      - USER_SERVICE_HOST=user
+      - USER_SERVICE_PORT="3000"
+      - THRESHOLD_SERVICE_HOST=threshold
+      - THRESHOLD_SERVICE_PORT="3000"
+      - FORECAST_SERVICE_HOST=forecast
+      - FORECAST_SERVICE_PORT="3000"
+      - ALERT_SERVICE_HOST=alert
+      - ALERT_SERVICE_PORT="3000"
+      - MONITORING_SERVICE_HOST=monitoring
+      - MONITORING_SERVICE_PORT="3000"
+      - MAP_SERVICE_HOST=map
+      - MAP_SERVICE_PORT="3000"
+      - HOOKUP_SERVICE_HOST=hookup
+      - HOOKUP_SERVICE_PORT="3000"
+      - FORECAST_HOUR="00"
+      - FORECAST_MINUTE="5"
+      - TZ=Europe/Berlin
+
+secretGenerator:
+  - name: eco-secrets
+    envs:
+      - .env

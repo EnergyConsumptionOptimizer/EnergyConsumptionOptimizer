@@ -1,0 +1,87 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eco-api
+  labels:
+    app.kubernetes.io/name: ingress-api
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /user(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: user
+                port:
+                  number: 3000
+          - path: /threshold(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: threshold
+                port:
+                  number: 3000
+          - path: /forecast(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: forecast
+                port:
+                  number: 3000
+          - path: /alert(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: alert
+                port:
+                  number: 3000
+          - path: /monitoring(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: monitoring
+                port:
+                  number: 3000
+          - path: /map(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: map
+                port:
+                  number: 3000
+          - path: /hookup(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: hookup
+                port:
+                  number: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eco-frontend
+  labels:
+    app.kubernetes.io/name: ingress-frontend
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
