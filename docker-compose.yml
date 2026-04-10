@@ -1,6 +1,5 @@
 name: eco
 
-# Common Variables
 x-service-defs:
   user-service-name: &user-name user
   user-service-port: &user-port 3000
@@ -24,7 +23,8 @@ x-service-defs:
   influxdb-port: &influxdb-port 8086
 
 x-healthcheck: &common-healthcheck
-  test: ["CMD-SHELL", "wget -q --spider http://localhost:$${PORT}/health || exit 1"]
+  test:
+    ["CMD-SHELL", "wget -q --spider http://localhost:$${PORT}/health || exit 1"]
   interval: 10s
   timeout: 3s
   retries: 3
@@ -36,7 +36,6 @@ x-logging: &common-logging
     max-size: "10m"
     max-file: "3"
 
-# Service Environment Variables
 x-gateway-env: &gateway-env
   USER_HOST: *user-name
   USER_PORT: *user-port
@@ -149,7 +148,6 @@ x-hookup-env: &hookup-env
   MONITORING_SERVICE_HOST: *monitoring-name
   MONITORING_SERVICE_PORT: *monitoring-port
 
-
 x-influx-env: &influx-env
   DOCKER_INFLUXDB_INIT_MODE: setup
   DOCKER_INFLUXDB_INIT_USERNAME: ${DOCKER_INFLUXDB_INIT_USERNAME:?missing DOCKER_INFLUXDB_INIT_USERNAME}
@@ -160,9 +158,7 @@ x-influx-env: &influx-env
   INFLUXD_LOG_LEVEL: error
   INFLUXD_HTTP_LOG_ENABLED: "false"
 
-# Services
 services:
-
   gateway:
     container_name: api-gateway
     build: ./gateway
@@ -175,7 +171,11 @@ services:
     environment:
       <<: *gateway-env
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-check-certificate -q --spider http://localhost/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-check-certificate -q --spider http://localhost/health || exit 1",
+        ]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -348,7 +348,6 @@ services:
       retries: 3
     logging: *common-logging
 
-# Networks
 networks:
   internal:
     driver: bridge

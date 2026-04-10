@@ -1,102 +1,180 @@
 services:
-
   gateway:
-    volumes:
-      - ./gateway:/app
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./gateway/nginx.conf.template
+          target: /etc/nginx/nginx.conf.template
+        - action: sync+restart
+          path: ./gateway/snippets
+          target: /etc/nginx/snippets
 
   frontend:
     image: frontend:local-dev
     build:
       context: ../frontend
-      target: builder # Target the Node stage, not the final Nginx stage
-    volumes:
-      - ../frontend:/app
-      - /app/node_modules # Prevent host node_modules from overwriting container's
+      target: dev
     ports:
       - "8080:80"
-    # Install deps on start and run Vite with host binding (0.0.0.0)
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 80 --strictPort false"
+    develop:
+      watch:
+        - action: sync
+          path: ../frontend/src
+          target: /app/src
+        - action: sync
+          path: ../frontend/public
+          target: /app/public
+        - action: sync+restart
+          path: ../frontend/vite.config.ts
+          target: /app/vite.config.ts
+        - action: sync+restart
+          path: ../frontend/package.json
+          target: /app/package.json
 
   user:
     image: user:local-dev
     build:
       context: ../user-service
+      target: dev
     ports:
       - "3001:3000"
-    volumes:
-      - ../user-service:/app
-      - /app/node_modules
-    # Use 'sh -c' to install dev dependencies (like ts-node-dev) before starting
     command: sh -c "npm install && npm run start:dev"
+    develop:
+      watch:
+        - action: sync
+          path: ../user-service/src
+          target: /app/src
+        - action: sync+restart
+          path: ../user-service/package.json
+          target: /app/package.json
+        - action: sync+restart
+          path: ../user-service/tsconfig.json
+          target: /app/tsconfig.json
 
   threshold:
     image: threshold:local-dev
     build:
       context: ../threshold-service
+      target: dev
     ports:
       - "3002:3000"
-    volumes:
-      - ../threshold-service:/app
-      - /app/node_modules
     command: sh -c "npm install && npm run start:dev"
+    develop:
+      watch:
+        - action: sync
+          path: ../threshold-service/src
+          target: /app/src
+        - action: sync+restart
+          path: ../threshold-service/package.json
+          target: /app/package.json
+        - action: sync+restart
+          path: ../threshold-service/tsconfig.json
+          target: /app/tsconfig.json
 
   forecast:
     image: forecast:local-dev
     build:
       context: ../forecast-service
-      target: build # Target the JDK stage to allow compilation
+      target: build
     ports:
       - "3003:3000"
+    command: gradle run --continuous --no-daemon
     volumes:
-      - ../forecast-service:/usr/src/app
       - gradle-cache:/home/gradle/.gradle
-    # Run with --continuous to enable Ktor Hot Reload
-    command: ./gradlew run --continuous
+    develop:
+      watch:
+        - action: sync
+          path: ../forecast-service/src
+          target: /app/src
+        - action: sync+restart
+          path: ../forecast-service/build.gradle.kts
+          target: /app/build.gradle.kts
+        - action: sync+restart
+          path: ../forecast-service/settings.gradle.kts
+          target: /app/settings.gradle.kts
 
   alert:
     image: alert:local-dev
     build:
       context: ../alert-service
+      target: dev
     ports:
       - "3004:3000"
-    volumes:
-      - ../alert-service:/app
-      - /app/node_modules
     command: sh -c "npm install && npm run start:dev"
+    develop:
+      watch:
+        - action: sync
+          path: ../alert-service/src
+          target: /app/src
+        - action: sync+restart
+          path: ../alert-service/package.json
+          target: /app/package.json
+        - action: sync+restart
+          path: ../alert-service/tsconfig.json
+          target: /app/tsconfig.json
 
   monitoring:
     image: monitoring:local-dev
     build:
       context: ../monitoring-service
+      target: dev
     ports:
       - "3005:3000"
-    volumes:
-      - ../monitoring-service:/app
-      - /app/node_modules
     command: sh -c "npm install && npm run start:dev"
+    develop:
+      watch:
+        - action: sync
+          path: ../monitoring-service/src
+          target: /app/src
+        - action: sync+restart
+          path: ../monitoring-service/package.json
+          target: /app/package.json
+        - action: sync+restart
+          path: ../monitoring-service/tsconfig.json
+          target: /app/tsconfig.json
 
   map:
     image: map:local-dev
     build:
       context: ../map-service
+      target: build
     ports:
       - "3006:3000"
+    command: gradle run --continuous --no-daemon
     volumes:
-      - ../map-service:/usr/src/app
       - gradle-cache:/home/gradle/.gradle
-    # Run with --continuous to enable Ktor Hot Reload
-    command: ./gradlew run --continuous
+    develop:
+      watch:
+        - action: sync
+          path: ../map-service/src
+          target: /app/src
+        - action: sync+restart
+          path: ../map-service/build.gradle.kts
+          target: /app/build.gradle.kts
+        - action: sync+restart
+          path: ../map-service/settings.gradle.kts
+          target: /app/settings.gradle.kts
 
   hookup:
     image: hookup:local-dev
     build:
       context: ../smart-furniture-hookup-service
+      target: dev
     ports:
       - "3007:3000"
-    volumes:
-      - ../smart-furniture-hookup-service:/app
-      - /app/node_modules
     command: sh -c "npm install && npm run start:dev"
+    develop:
+      watch:
+        - action: sync
+          path: ../smart-furniture-hookup-service/src
+          target: /app/src
+        - action: sync+restart
+          path: ../smart-furniture-hookup-service/package.json
+          target: /app/package.json
+        - action: sync+restart
+          path: ../smart-furniture-hookup-service/tsconfig.json
+          target: /app/tsconfig.json
 
   influxdb:
     ports:
@@ -109,7 +187,7 @@ services:
 networks:
   internal:
     driver: bridge
-    internal: false # Enable Internet access for package downloads (npm/gradle)
+    internal: false
 
 volumes:
   gradle-cache:
