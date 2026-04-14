@@ -81,7 +81,7 @@ services:
       - "3003:3000"
     command: gradle run --continuous --no-daemon
     volumes:
-      - gradle-cache:/home/gradle/.gradle
+      - forecast-gradle-cache:/home/gradle/.gradle
     develop:
       watch:
         - action: sync
@@ -143,7 +143,7 @@ services:
       - "3006:3000"
     command: gradle run --continuous --no-daemon
     volumes:
-      - gradle-cache:/home/gradle/.gradle
+      - map-gradle-cache:/home/gradle/.gradle
     develop:
       watch:
         - action: sync
@@ -190,4 +190,5 @@ networks:
     internal: false
 
 volumes:
-  gradle-cache:
+  forecast-gradle-cache:
+  map-gradle-cache:
