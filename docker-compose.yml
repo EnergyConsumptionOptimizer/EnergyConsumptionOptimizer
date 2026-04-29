@@ -22,9 +22,16 @@ x-service-defs:
   influxdb-name: &influxdb-name influxdb
   influxdb-port: &influxdb-port 8086
 
-x-healthcheck: &common-healthcheck
-  test:
-    ["CMD-SHELL", "wget -q --spider http://localhost:$${PORT}/health || exit 1"]
+# SHARED CONFIGS
+x-backend-healthcheck: &backend-healthcheck
+  test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/health"]
+  interval: 10s
+  timeout: 3s
+  retries: 3
+  start_period: 30s
+
+x-frontend-healthcheck: &frontend-healthcheck
+  test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/"]
   interval: 10s
   timeout: 3s
   retries: 3
@@ -36,24 +43,8 @@ x-logging: &common-logging
     max-size: "10m"
     max-file: "3"
 
-x-gateway-env: &gateway-env
-  USER_HOST: *user-name
-  USER_PORT: *user-port
-  THRESHOLD_HOST: *threshold-name
-  THRESHOLD_PORT: *threshold-port
-  FORECAST_HOST: *forecast-name
-  FORECAST_PORT: *forecast-port
-  ALERT_HOST: *alert-name
-  ALERT_PORT: *alert-port
-  FRONTEND_HOST: *frontend-name
-  FRONTEND_PORT: *frontend-port
-  MONITORING_HOST: *monitoring-name
-  MONITORING_PORT: *monitoring-port
-  MAP_HOST: *map-name
-  MAP_PORT: *map-port
-  HOOKUP_HOST: *hookup-name
-  HOOKUP_PORT: *hookup-port
 
+# ENVIRONMENT BLOCKS
 x-frontend-env: &frontend-env
   NAME: *frontend-name
   PORT: *frontend-port
@@ -115,7 +106,7 @@ x-monitoring-env: &monitoring-env
   INFLUXDB_PORT: *influxdb-port
   INFLUX_ORG: ${DOCKER_INFLUXDB_INIT_ORG:-eco}
   INFLUX_BUCKET: ${DOCKER_INFLUXDB_INIT_BUCKET:-monitoring}
-  INFLUX_TOKEN: ${DOCKER_INFLUXDB_INIT_ADMIN_TOKEN:?missing DOCKER_INFLUXDB_INIT_ADMIN_TOKEN}
+  INFLUX_TOKEN: ${DOCKER_INFLUXDB_INIT_ADMIN_TOKEN:?missing TOKEN}
   USER_SERVICE_HOST: *user-name
   USER_SERVICE_PORT: *user-port
   THRESHOLD_SERVICE_HOST: *threshold-name
@@ -150,57 +141,69 @@ x-hookup-env: &hookup-env
 
 x-influx-env: &influx-env
   DOCKER_INFLUXDB_INIT_MODE: setup
-  DOCKER_INFLUXDB_INIT_USERNAME: ${DOCKER_INFLUXDB_INIT_USERNAME:?missing DOCKER_INFLUXDB_INIT_USERNAME}
-  DOCKER_INFLUXDB_INIT_PASSWORD: ${DOCKER_INFLUXDB_INIT_PASSWORD:?missing DOCKER_INFLUXDB_INIT_PASSWORD}
+  DOCKER_INFLUXDB_INIT_USERNAME: ${DOCKER_INFLUXDB_INIT_USERNAME:?missing USERNAME}
+  DOCKER_INFLUXDB_INIT_PASSWORD: ${DOCKER_INFLUXDB_INIT_PASSWORD:?missing PASSWORD}
   DOCKER_INFLUXDB_INIT_ORG: ${DOCKER_INFLUXDB_INIT_ORG:-eco}
   DOCKER_INFLUXDB_INIT_BUCKET: ${DOCKER_INFLUXDB_INIT_BUCKET:-monitoring}
-  DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${DOCKER_INFLUXDB_INIT_ADMIN_TOKEN:?missing DOCKER_INFLUXDB_INIT_ADMIN_TOKEN}
+  DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${DOCKER_INFLUXDB_INIT_ADMIN_TOKEN:?missing TOKEN}
   INFLUXD_LOG_LEVEL: error
   INFLUXD_HTTP_LOG_ENABLED: "false"
 
+
 services:
-  gateway:
+
+  # API-GATEWAY
+  traefik:
     container_name: api-gateway
-    build: ./gateway
+    image: traefik:v3.6.14
     restart: unless-stopped
     ports:
       - "${HOST_PORT:-80}:80"
     networks:
       - internal
       - external
-    environment:
-      <<: *gateway-env
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=eco_internal
+      - --entrypoints.web.address=:80
+      - --api.insecure=true
+      - --ping=true
+      - --log.level=INFO
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget --no-check-certificate -q --spider http://localhost/health || exit 1",
-        ]
-      interval: 5s
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/ping"]
+      interval: 10s
       timeout: 3s
-      retries: 5
+      retries: 3
       start_period: 5s
     logging: *common-logging
 
+  # FRONTEND
   frontend:
     container_name: frontend
     image: ghcr.io/energyconsumptionoptimizer/frontend:latest
     restart: unless-stopped
-    expose:
-      - *frontend-port
     networks:
       - internal
     environment:
       <<: *frontend-env
-    healthcheck: *common-healthcheck
+    healthcheck: *frontend-healthcheck
     logging: *common-logging
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.routers.frontend.service=frontend"
 
+
+  # NODE.JS SERVICES
   user:
     container_name: user-service
     image: ghcr.io/energyconsumptionoptimizer/user-service:latest
     restart: unless-stopped
-    expose:
-      - *user-port
     networks:
       - internal
     environment:
@@ -208,15 +211,39 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
-    healthcheck: *common-healthcheck
+    healthcheck: *backend-healthcheck
     logging: *common-logging
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.user.loadbalancer.server.port=3000"
+      
+      # Public auth endpoints (Priority 30)
+      - "traefik.http.routers.user-public.rule=PathPrefix(`/user/api/auth`)"
+      - "traefik.http.routers.user-public.entrypoints=web"
+      - "traefik.http.routers.user-public.middlewares=user-strip"
+      - "traefik.http.routers.user-public.priority=30"
+      
+      # Admin reset-password
+      - "traefik.http.routers.user-admin.rule=PathPrefix(`/user/api/admin`)"
+      - "traefik.http.routers.user-admin.entrypoints=web"
+      - "traefik.http.routers.user-admin.middlewares=user-strip"
+      - "traefik.http.routers.user-admin.priority=30"
+      
+      # Catch-all protected routes (Priority 10)
+      - "traefik.http.routers.user.rule=Path(`/user`) || PathPrefix(`/user/`)"
+      - "traefik.http.routers.user.entrypoints=web"
+      - "traefik.http.routers.user.middlewares=user-strip,forward-auth"
+      - "traefik.http.routers.user.priority=10"
+      
+      # Middlewares
+      - "traefik.http.middlewares.user-strip.stripprefix.prefixes=/user"
+      - "traefik.http.middlewares.forward-auth.forwardauth.address=http://user:3000/api/internal/auth/verify"
+      - "traefik.http.middlewares.forward-auth.forwardauth.authResponseHeaders=X-User-Id,X-User-Role,X-User-Username"
 
   threshold:
     container_name: threshold-service
     image: ghcr.io/energyconsumptionoptimizer/threshold-service:latest
     restart: unless-stopped
-    expose:
-      - *threshold-port
     networks:
       - internal
     environment:
@@ -224,31 +251,22 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
-    healthcheck: *common-healthcheck
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck: *backend-healthcheck
     logging: *common-logging
-
-  forecast:
-    container_name: forecast-service
-    image: ghcr.io/energyconsumptionoptimizer/forecast-service:latest
-    restart: unless-stopped
-    expose:
-      - *forecast-port
-    networks:
-      - internal
-    environment:
-      <<: *forecast-env
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    healthcheck: *common-healthcheck
-    logging: *common-logging
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.threshold.loadbalancer.server.port=3000"
+      - "traefik.http.routers.threshold.rule=PathPrefix(`/threshold`)"
+      - "traefik.http.routers.threshold.entrypoints=web"
+      - "traefik.http.routers.threshold.middlewares=threshold-strip,forward-auth"
+      - "traefik.http.middlewares.threshold-strip.stripprefix.prefixes=/threshold"
 
   alert:
     container_name: alert-service
     image: ghcr.io/energyconsumptionoptimizer/alert-service:latest
     restart: unless-stopped
-    expose:
-      - *alert-port
     networks:
       - internal
     environment:
@@ -256,15 +274,22 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
-    healthcheck: *common-healthcheck
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck: *backend-healthcheck
     logging: *common-logging
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.alert.loadbalancer.server.port=3000"
+      - "traefik.http.routers.alert.rule=PathPrefix(`/alert`)"
+      - "traefik.http.routers.alert.entrypoints=web"
+      - "traefik.http.routers.alert.middlewares=alert-strip,forward-auth"
+      - "traefik.http.middlewares.alert-strip.stripprefix.prefixes=/alert"
 
   monitoring:
     container_name: monitoring-service
     image: ghcr.io/energyconsumptionoptimizer/monitoring-service:latest
     restart: unless-stopped
-    expose:
-      - *monitoring-port
     networks:
       - internal
       - external
@@ -273,33 +298,24 @@ services:
     depends_on:
       influxdb:
         condition: service_healthy
-    healthcheck: *common-healthcheck
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck: *backend-healthcheck
     logging: *common-logging
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
-  map:
-    container_name: map-service
-    image: ghcr.io/energyconsumptionoptimizer/map-service:latest
-    restart: unless-stopped
-    expose:
-      - *map-port
-    networks:
-      - internal
-    environment:
-      <<: *map-env
-    depends_on:
-      influxdb:
-        condition: service_healthy
-    healthcheck: *common-healthcheck
-    logging: *common-logging
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.monitoring.loadbalancer.server.port=3000"
+      - "traefik.http.routers.monitoring.rule=PathPrefix(`/monitoring`)"
+      - "traefik.http.routers.monitoring.entrypoints=web"
+      - "traefik.http.routers.monitoring.middlewares=monitoring-strip,forward-auth"
+      - "traefik.http.middlewares.monitoring-strip.stripprefix.prefixes=/monitoring"
 
   hookup:
     container_name: hookup-service
     image: ghcr.io/energyconsumptionoptimizer/smart-furniture-hookup-service:latest
     restart: unless-stopped
-    expose:
-      - *hookup-port
     networks:
       - internal
     environment:
@@ -307,36 +323,97 @@ services:
     depends_on:
       influxdb:
         condition: service_healthy
-    healthcheck: *common-healthcheck
+    healthcheck: *backend-healthcheck
     logging: *common-logging
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.hookup.loadbalancer.server.port=3000"
+      - "traefik.http.routers.hookup.rule=PathPrefix(`/hookup`)"
+      - "traefik.http.routers.hookup.entrypoints=web"
+      - "traefik.http.routers.hookup.middlewares=hookup-strip,forward-auth"
+      - "traefik.http.middlewares.hookup-strip.stripprefix.prefixes=/hookup"
 
+
+  # KOTLIN SERVICES
+  map:
+    container_name: map-service
+    image: ghcr.io/energyconsumptionoptimizer/map-service:latest
+    restart: unless-stopped
+    networks:
+      - internal
+    environment:
+      <<: *map-env
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck: *backend-healthcheck
+    logging: *common-logging
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.map.loadbalancer.server.port=3000"
+      - "traefik.http.routers.map.rule=PathPrefix(`/map`)"
+      - "traefik.http.routers.map.entrypoints=web"
+      - "traefik.http.routers.map.middlewares=map-strip,forward-auth"
+      - "traefik.http.middlewares.map-strip.stripprefix.prefixes=/map"
+
+  forecast:
+    container_name: forecast-service
+    image: ghcr.io/energyconsumptionoptimizer/forecast-service:latest
+    restart: unless-stopped
+    networks:
+      - internal
+    environment:
+      <<: *forecast-env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck: *backend-healthcheck
+    logging: *common-logging
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.forecast.loadbalancer.server.port=3000"
+      - "traefik.http.routers.forecast.rule=PathPrefix(`/forecast`)"
+      - "traefik.http.routers.forecast.entrypoints=web"
+      - "traefik.http.routers.forecast.middlewares=forecast-strip,forward-auth"
+      - "traefik.http.middlewares.forecast-strip.stripprefix.prefixes=/forecast"
+      
+
+# STORAGE
   mongodb:
     container_name: mongodb
-    image: mymongo
-    build:
-      context: ./mongodb
-      dockerfile: Dockerfile
-    restart: always
-    expose:
-      - *mongodb-port
+    image: mongo:7.0
+    command: ["--replSet", "rs0"]
+    restart: unless-stopped
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping').ok"]
       interval: 5s
       timeout: 3s
-      retries: 3
-    command:
-      - "mongod"
-      - "--quiet"
+      retries: 5
+    volumes:
+      - mongodb-data:/data/db
     logging: *common-logging
+
+  mongo-setup:
+    container_name: mongo-setup
+    image: mongo:7.0
+    restart: no
+    networks:
+      - internal
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    command: >
+      mongosh --host mongodb:27017 --eval
+      "try { rs.status(); } catch(e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongodb:27017'}]}); }"
 
   influxdb:
     container_name: influxdb
     image: influxdb:2.7-alpine
     restart: unless-stopped
-    expose:
-      - *influxdb-port
     networks:
       - internal
     environment:
@@ -348,16 +425,92 @@ services:
       retries: 3
     logging: *common-logging
 
+# INFRASTRUCTURE
+  kafka:
+    container_name: kafka
+    image: confluentinc/cp-kafka:7.9.0
+    restart: unless-stopped
+    networks:
+      - internal
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:29093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:?missing KAFKA_CLUSTER_ID}
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging: *common-logging
+
+  kafka-init:
+    container_name: kafka-init
+    image: confluentinc/cp-kafka:7.9.0
+    restart: no
+    networks:
+      - internal
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command: >
+      bash -c "for topic in measurements thresholds forecasts users zones hookups alerts-events thresholds-dlq; do kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic $$topic --replication-factor 1 --partitions 1; done"
+
+  kafka-connect:
+    container_name: kafka-connect
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM confluentinc/cp-kafka-connect:7.9.0
+        RUN confluent-hub install --no-prompt mongodb/kafka-connect-mongodb:1.13.0
+    restart: unless-stopped
+    networks:
+      - internal
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mongo-setup:
+        condition: service_completed_successfully
+    volumes:
+      - ./kafka-connect/configs:/etc/kafka-connect/configs
+      - kafka-connect-data:/data
+    command: >
+      bash -c "
+        connect-standalone /etc/kafka-connect/configs/worker.properties \
+        /etc/kafka-connect/configs/alert-connector.properties \
+        /etc/kafka-connect/configs/forecast-connector.properties \
+        /etc/kafka-connect/configs/map-connector.properties \
+        /etc/kafka-connect/configs/monitoring-connector.properties \
+        /etc/kafka-connect/configs/user-connector.properties
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-s", "http://localhost:8083/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    logging: *common-logging
+
+# NETWORKS
 networks:
   internal:
+    name: eco_internal
     driver: bridge
     internal: true
-    driver_opts:
-      com.docker.network.bridge.name: "br-eco-int1"
-      com.docker.network.enable_ipv6: "false"
   external:
+    name: eco_external
     driver: bridge
-    internal: false
-    driver_opts:
-      com.docker.network.bridge.name: "br-eco-ext1"
-      com.docker.network.enable_ipv6: "false"
+
+# VOLUMES
+volumes:
+  mongodb-data:
+  kafka-connect-data:
