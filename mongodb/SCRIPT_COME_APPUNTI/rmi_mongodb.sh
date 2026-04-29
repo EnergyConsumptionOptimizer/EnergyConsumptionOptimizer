@@ -1,3 +1,0 @@
-
-docker rmi mymongo
-
