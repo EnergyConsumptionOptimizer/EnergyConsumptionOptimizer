@@ -26,10 +26,6 @@ The following variables are strictly required and have **no default values**:
 | `DOCKER_INFLUXDB_INIT_PASSWORD` | InfluxDB password |
 | `DOCKER_INFLUXDB_INIT_ADMIN_TOKEN` | InfluxDB admin token |
 
-### Custom MongoDB Image
-The project uses a custom MongoDB image designed **without external anonymous volumes**.  
-This base image (`mongonovolume`) must be generated locally via the provided script **before** starting the orchestration.
-
 ## Step-by-step Guide
 
 ### 1. Clone the Repository
@@ -37,21 +33,18 @@ This base image (`mongonovolume`) must be generated locally via the provided scr
 git clone https://github.com/EnergyConsumptionOptimizer/EnergyConsumptionOptimizer
 ```
 ### 2. Setup Environment
-Navigate to the project root and configure the [Required Variables](#required-variables). You can create an .env file.
-
-### 3. Generate Database Base Image
-Execute the script to build the [custom MongoDB](#custom-mongodb-image) image:
+Navigate to the project root and configure the [Required Variables](#required-variables). You can create an `.env` file from the provided example:
 ```bash
-./CREATE_NOVOLUME_BASE_IMAGE.sh
+cp .env-example .env
 ```
 
-### 4. Start the System
+### 3. Start the System
 To start up the system, run the command:
 ```bash
 docker compose up
 ```
 
-### 5. Access
+### 4. Access
 Once the system is running, the application is accessible via browser at URL: http://localhost:80
 
 The system comes with a pre-configured administrator account:
