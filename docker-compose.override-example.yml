@@ -181,6 +181,11 @@ services:
           target: /app/settings.gradle.kts
 
 
+# OBSERVABILITY
+  grafana:
+    ports:
+      - "9091:9091"
+
 # INFRASTRUCTURE
   kafka:
     environment:

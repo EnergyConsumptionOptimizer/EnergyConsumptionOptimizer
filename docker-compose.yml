@@ -17,6 +17,10 @@ x-service-defs:
   map-service-port: &map-port 3000
   smart-furniture-hookup-service-name: &hookup-name hookup
   smart-furniture-hookup-service-port: &hookup-port 3000
+  prometheus-name: &prometheus-name prometheus
+  prometheus-port: &prometheus-port 9090
+  grafana-name: &grafana-name grafana
+  grafana-port: &grafana-port 9091
   mongodb-name: &mongodb-name mongodb
   mongodb-port: &mongodb-port 27017
   influxdb-name: &influxdb-name influxdb
@@ -81,8 +85,6 @@ x-forecast-env: &forecast-env
   MONGODB_HOST: *mongodb-name
   MONGODB_PORT: *mongodb-port
   MONGO_DB: *forecast-name
-  USER_SERVICE_HOST: *user-name
-  USER_SERVICE_PORT: *user-port
   THRESHOLD_SERVICE_HOST: *threshold-name
   THRESHOLD_SERVICE_PORT: *threshold-port
   MONITORING_SERVICE_HOST: *monitoring-name
@@ -170,6 +172,10 @@ services:
       - --api.insecure=true
       - --ping=true
       - --log.level=INFO
+
+      # OpenTelemetry for correlationid(traceparent)
+      - --metrics.otlp=true
+      - --tracing.otlp.http=true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:
@@ -222,12 +228,14 @@ services:
       - "traefik.http.routers.user-public.entrypoints=web"
       - "traefik.http.routers.user-public.middlewares=user-strip"
       - "traefik.http.routers.user-public.priority=30"
+      - "traefik.http.routers.user-public.service=user"
       
       # Admin reset-password
       - "traefik.http.routers.user-admin.rule=PathPrefix(`/user/api/admin`)"
       - "traefik.http.routers.user-admin.entrypoints=web"
       - "traefik.http.routers.user-admin.middlewares=user-strip"
       - "traefik.http.routers.user-admin.priority=30"
+      - "traefik.http.routers.user-admin.service=user"
       
       # Catch-all protected routes (Priority 10)
       - "traefik.http.routers.user.rule=Path(`/user`) || PathPrefix(`/user/`)"
@@ -321,7 +329,7 @@ services:
     environment:
       <<: *hookup-env
     depends_on:
-      influxdb:
+      mongodb:
         condition: service_healthy
     healthcheck: *backend-healthcheck
     logging: *common-logging
@@ -344,7 +352,7 @@ services:
     environment:
       <<: *map-env
     depends_on:
-      influxdb:
+      mongodb:
         condition: service_healthy
     healthcheck: *backend-healthcheck
     logging: *common-logging
@@ -423,6 +431,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 3
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
     logging: *common-logging
 
 # INFRASTRUCTURE
@@ -444,7 +454,9 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      CLUSTER_ID: ${KAFKA_CLUSTER_ID:?missing KAFKA_CLUSTER_ID}
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:-MkU3OEVBNTcwNTJENDM2Qk}
+    volumes:
+      - kafka-data:/var/lib/kafka/data
     healthcheck:
       test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1"]
       interval: 10s
@@ -463,7 +475,7 @@ services:
       kafka:
         condition: service_healthy
     command: >
-      bash -c "for topic in measurements thresholds forecasts users zones hookups alerts-events thresholds-dlq; do kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic $$topic --replication-factor 1 --partitions 1; done"
+      bash -c "for topic in measurements threshold-events forecast-events user zones hookups alert-events map-events threshold-dlq alert-dlq forecast-dlq; do kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic $$topic --replication-factor 1 --partitions 1; done"
 
   kafka-connect:
     container_name: kafka-connect
@@ -489,7 +501,7 @@ services:
         /etc/kafka-connect/configs/alert-connector.properties \
         /etc/kafka-connect/configs/forecast-connector.properties \
         /etc/kafka-connect/configs/map-connector.properties \
-        /etc/kafka-connect/configs/monitoring-connector.properties \
+        /etc/kafka-connect/configs/threshold-connector.properties \
         /etc/kafka-connect/configs/user-connector.properties
       "
     healthcheck:
@@ -499,6 +511,53 @@ services:
       retries: 10
       start_period: 60s
     logging: *common-logging
+
+# OBSERVABILITY
+  prometheus:
+    image: prom/prometheus:v3.3.0
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    networks:
+      - internal
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    networks:
+      - internal
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: 'Admin'
+      GF_SERVER_HTTP_PORT: '9091'
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-piechart-panel
+    volumes:
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards/json:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:9091/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
 # NETWORKS
 networks:
@@ -513,4 +572,8 @@ networks:
 # VOLUMES
 volumes:
   mongodb-data:
+  influxdb-data:
+  kafka-data:
   kafka-connect-data:
+  prometheus_data:
+  grafana_data:
