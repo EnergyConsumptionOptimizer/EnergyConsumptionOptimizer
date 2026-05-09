@@ -1,0 +1,66 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: "0.0.0.0:4318"
+
+processors:
+  batch: {}
+
+  filter/traefik-docker:
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsMatch(name, "GET /v[0-9.]+/containers.*")'
+
+  filter/health-checks:
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsMatch(name, "health")'
+
+  filter/express-middleware:
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsMatch(name, "^middleware ")'
+
+  filter/static-assets:
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsMatch(attributes["url.path"], ".*\\.(js|css|png|ico|svg|woff2?|map|json|ts|html)($|\\?)") or IsMatch(attributes["url.full"], ".*\\.(js|css|png|ico|svg|woff2?|map|json|ts|html)($|\\?)")'
+
+exporters:
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  otlp_http/loki:
+    endpoint: "http://loki:3100/otlp"
+
+  otlp_grpc/tempo:
+    endpoint: "tempo:4317"
+    tls:
+      insecure: true
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_http/loki]
+    traces:
+      receivers: [otlp]
+      processors: [batch, filter/traefik-docker, filter/health-checks, filter/express-middleware, filter/static-assets]
+      exporters: [otlp_grpc/tempo]

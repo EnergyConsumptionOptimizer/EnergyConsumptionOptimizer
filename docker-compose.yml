@@ -28,14 +28,14 @@ x-service-defs:
 
 # SHARED CONFIGS
 x-backend-healthcheck: &backend-healthcheck
-  test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/health"]
+  test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/health"]
   interval: 10s
   timeout: 3s
   retries: 3
   start_period: 30s
 
 x-frontend-healthcheck: &frontend-healthcheck
-  test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/"]
+  test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
   interval: 10s
   timeout: 3s
   retries: 3
@@ -47,11 +47,18 @@ x-logging: &common-logging
     max-size: "10m"
     max-file: "3"
 
-
 # ENVIRONMENT BLOCKS
+x-otel-env: &otel-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/json"
+  OTEL_TRACES_EXPORTER: "otlp"
+  OTEL_METRICS_EXPORTER: "otlp"
+  OTEL_LOGS_EXPORTER: "otlp"
+
 x-frontend-env: &frontend-env
   NAME: *frontend-name
   PORT: *frontend-port
+  OTEL_SERVICE_NAME: "frontend"
 
 x-user-env: &user-env
   NAME: *user-name
@@ -65,6 +72,7 @@ x-user-env: &user-env
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
   JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
   RESET_CODE: ${RESET_CODE}
+  OTEL_SERVICE_NAME: "user-service"
 
 x-threshold-env: &threshold-env
   NAME: *threshold-name
@@ -78,6 +86,7 @@ x-threshold-env: &threshold-env
   ALERT_SERVICE_PORT: *alert-port
   MONITORING_SERVICE_HOST: *monitoring-name
   MONITORING_SERVICE_PORT: *monitoring-port
+  OTEL_SERVICE_NAME: "threshold-service"
 
 x-forecast-env: &forecast-env
   NAME: *forecast-name
@@ -91,6 +100,7 @@ x-forecast-env: &forecast-env
   MONITORING_SERVICE_PORT: *monitoring-port
   FORECAST_HOUR: ${FORECAST_HOUR:-00}
   FORECAST_MINUTE: ${FORECAST_MINUTE:-5}
+  OTEL_SERVICE_NAME: "forecast-service"
 
 x-alert-env: &alert-env
   NAME: *alert-name
@@ -100,6 +110,7 @@ x-alert-env: &alert-env
   MONGO_DB: *alert-name
   USER_SERVICE_HOST: *user-name
   USER_SERVICE_PORT: *user-port
+  OTEL_SERVICE_NAME: "alert-service"
 
 x-monitoring-env: &monitoring-env
   NAME: *monitoring-name
@@ -120,6 +131,7 @@ x-monitoring-env: &monitoring-env
   EXTERNAL_API_HOST: ${HOST_IP:-localhost}
   EXTERNAL_API_PORT: ${HOST_PORT:-80}
   TZ: ${TZ:-Europe/Berlin}
+  OTEL_SERVICE_NAME: "monitoring-service"
 
 x-map-env: &map-env
   NAME: *map-name
@@ -129,6 +141,7 @@ x-map-env: &map-env
   MONGO_DB: *map-name
   USER_SERVICE_HOST: *user-name
   USER_SERVICE_PORT: *user-port
+  OTEL_SERVICE_NAME: "map-service"
 
 x-hookup-env: &hookup-env
   NAME: *hookup-name
@@ -140,6 +153,7 @@ x-hookup-env: &hookup-env
   USER_SERVICE_PORT: *user-port
   MONITORING_SERVICE_HOST: *monitoring-name
   MONITORING_SERVICE_PORT: *monitoring-port
+  OTEL_SERVICE_NAME: "hookup-service"
 
 x-influx-env: &influx-env
   DOCKER_INFLUXDB_INIT_MODE: setup
@@ -157,7 +171,7 @@ services:
   # API-GATEWAY
   traefik:
     container_name: api-gateway
-    image: traefik:v3.6.14
+    image: traefik:v3.7.0
     restart: unless-stopped
     ports:
       - "${HOST_PORT:-80}:80"
@@ -175,11 +189,13 @@ services:
 
       # OpenTelemetry for correlationid(traceparent)
       - --metrics.otlp=true
-      - --tracing.otlp.http=true
+      - --metrics.otlp.http.endpoint=http://otel-collector:4318/v1/metrics
+      - --tracing.otlp=true
+      - --tracing.otlp.http.endpoint=http://otel-collector:4318/v1/traces
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/ping"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/ping"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -213,7 +229,7 @@ services:
     networks:
       - internal
     environment:
-      <<: *user-env
+      <<: [*user-env, *otel-env]
     depends_on:
       mongodb:
         condition: service_healthy
@@ -237,16 +253,18 @@ services:
       - "traefik.http.routers.user-admin.priority=30"
       - "traefik.http.routers.user-admin.service=user"
       
-      # Catch-all protected routes (Priority 10)
+      # Catch-all protected routes (Priority 20 — must beat frontend@15)
       - "traefik.http.routers.user.rule=Path(`/user`) || PathPrefix(`/user/`)"
       - "traefik.http.routers.user.entrypoints=web"
       - "traefik.http.routers.user.middlewares=user-strip,forward-auth"
-      - "traefik.http.routers.user.priority=10"
+      - "traefik.http.routers.user.priority=20"
       
       # Middlewares
       - "traefik.http.middlewares.user-strip.stripprefix.prefixes=/user"
       - "traefik.http.middlewares.forward-auth.forwardauth.address=http://user:3000/api/internal/auth/verify"
       - "traefik.http.middlewares.forward-auth.forwardauth.authResponseHeaders=X-User-Id,X-User-Role,X-User-Username"
+      - "traefik.http.middlewares.forward-auth.forwardauth.trustForwardHeader=false"
+      - "traefik.http.middlewares.forward-auth.forwardauth.maxResponseBodySize=1048576"
 
   threshold:
     container_name: threshold-service
@@ -255,7 +273,7 @@ services:
     networks:
       - internal
     environment:
-      <<: *threshold-env
+      <<: [*threshold-env, *otel-env]
     depends_on:
       mongodb:
         condition: service_healthy
@@ -278,7 +296,7 @@ services:
     networks:
       - internal
     environment:
-      <<: *alert-env
+      <<: [*alert-env, *otel-env]
     depends_on:
       mongodb:
         condition: service_healthy
@@ -302,7 +320,7 @@ services:
       - internal
       - external
     environment:
-      <<: *monitoring-env
+      <<: [*monitoring-env, *otel-env]
     depends_on:
       influxdb:
         condition: service_healthy
@@ -327,7 +345,7 @@ services:
     networks:
       - internal
     environment:
-      <<: *hookup-env
+      <<: [*hookup-env, *otel-env]
     depends_on:
       mongodb:
         condition: service_healthy
@@ -350,7 +368,7 @@ services:
     networks:
       - internal
     environment:
-      <<: *map-env
+      <<: [*map-env, *otel-env]
     depends_on:
       mongodb:
         condition: service_healthy
@@ -371,7 +389,7 @@ services:
     networks:
       - internal
     environment:
-      <<: *forecast-env
+      <<: [*forecast-env, *otel-env]
     depends_on:
       mongodb:
         condition: service_healthy
@@ -500,6 +518,7 @@ services:
         connect-standalone /etc/kafka-connect/configs/worker.properties \
         /etc/kafka-connect/configs/alert-connector.properties \
         /etc/kafka-connect/configs/forecast-connector.properties \
+        /etc/kafka-connect/configs/hookup-connector.properties \
         /etc/kafka-connect/configs/map-connector.properties \
         /etc/kafka-connect/configs/threshold-connector.properties \
         /etc/kafka-connect/configs/user-connector.properties
@@ -514,7 +533,7 @@ services:
 
 # OBSERVABILITY
   prometheus:
-    image: prom/prometheus:v3.3.0
+    image: prom/prometheus:v3.11.3
     container_name: prometheus
     restart: unless-stopped
     ports:
@@ -522,7 +541,7 @@ services:
     networks:
       - internal
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -536,7 +555,7 @@ services:
       retries: 3
 
   grafana:
-    image: grafana/grafana:11.6.0
+    image: grafana/grafana:12.0.1
     container_name: grafana
     restart: unless-stopped
     depends_on:
@@ -547,17 +566,58 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: 'true'
       GF_AUTH_ANONYMOUS_ORG_ROLE: 'Admin'
       GF_SERVER_HTTP_PORT: '9091'
-      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-piechart-panel
     volumes:
-      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./grafana/dashboards/json:/var/lib/grafana/dashboards:ro
+      - ./observability/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./observability/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/dashboards/json:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://localhost:9091/api/health"]
       interval: 10s
       timeout: 3s
       retries: 3
+
+  loki:
+    image: grafana/loki:3.6.10
+    container_name: loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    networks:
+      - internal
+    logging: *common-logging
+
+  tempo:
+    image: grafana/tempo:2.9.0
+    container_name: tempo
+    restart: unless-stopped
+    command:
+      - "-config.file=/etc/tempo/tempo.yaml"
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    networks:
+      - internal
+    logging: *common-logging
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3200/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.151.0
+    container_name: otel-collector
+    restart: unless-stopped
+    volumes:
+      - ./observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4318:4318"
+      - "8889:8889"
+    networks:
+      - internal
+    logging: *common-logging
 
 # NETWORKS
 networks:
@@ -577,3 +637,4 @@ volumes:
   kafka-connect-data:
   prometheus_data:
   grafana_data:
+  tempo_data:
