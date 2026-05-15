@@ -76,8 +76,8 @@ services:
           path: ../threshold-service/tsconfig.json
           target: /app/tsconfig.json
 
-  alert:
-    image: alert:local-dev
+  notification:
+    image: notification:local-dev
     build:
       context: ../alert-service
       target: dev

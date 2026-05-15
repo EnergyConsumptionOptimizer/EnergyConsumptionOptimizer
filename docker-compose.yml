@@ -9,8 +9,8 @@ x-service-defs:
   forecast-service-port: &forecast-port 3000
   frontend-service-name: &frontend-name frontend
   frontend-service-port: &frontend-port 80
-  alert-service-name: &alert-name alert
-  alert-service-port: &alert-port 3000
+  notification-service-name: &notification-name notification
+  notification-service-port: &notification-port 3000
   monitoring-service-name: &monitoring-name monitoring
   monitoring-service-port: &monitoring-port 3000
   map-service-name: &map-name map
@@ -66,8 +66,6 @@ x-user-env: &user-env
   MONGODB_HOST: *mongodb-name
   MONGODB_PORT: *mongodb-port
   MONGO_DB: *user-name
-  MONITORING_SERVICE_HOST: *monitoring-name
-  MONITORING_SERVICE_PORT: *monitoring-port
   JWT_SECRET_KEY: ${JWT_SECRET_KEY}
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
   JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
@@ -80,10 +78,11 @@ x-threshold-env: &threshold-env
   MONGODB_HOST: *mongodb-name
   MONGODB_PORT: *mongodb-port
   MONGO_DB: *threshold-name
-  USER_SERVICE_HOST: *user-name
-  USER_SERVICE_PORT: *user-port
-  ALERT_SERVICE_HOST: *alert-name
-  ALERT_SERVICE_PORT: *alert-port
+  KAFKA_CLIENT_ID: "threshold-service"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  KAFKA_GROUP_ID: "threshold-service-group"
+  KAFKA_TOPIC_FORECASTS: "forecast-events"
+  KAFKA_TOPIC_FORECASTS_DLQ: "threshold-dlq"
   MONITORING_SERVICE_HOST: *monitoring-name
   MONITORING_SERVICE_PORT: *monitoring-port
   OTEL_SERVICE_NAME: "threshold-service"
@@ -102,15 +101,18 @@ x-forecast-env: &forecast-env
   FORECAST_MINUTE: ${FORECAST_MINUTE:-5}
   OTEL_SERVICE_NAME: "forecast-service"
 
-x-alert-env: &alert-env
-  NAME: *alert-name
-  PORT: *alert-port
+x-notification-env: &notification-env
+  NAME: *notification-name
+  PORT: *notification-port
   MONGODB_HOST: *mongodb-name
   MONGODB_PORT: *mongodb-port
-  MONGO_DB: *alert-name
-  USER_SERVICE_HOST: *user-name
-  USER_SERVICE_PORT: *user-port
-  OTEL_SERVICE_NAME: "alert-service"
+  MONGO_DB: *notification-name
+  KAFKA_CLIENT_ID: "notification-service"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  KAFKA_GROUP_ID: "notification-service-group"
+  KAFKA_TOPIC_THRESHOLD_BREACHED: "threshold-events"
+  KAFKA_TOPIC_THRESHOLD_BREACHED_DLQ: "notification-dlq"
+  OTEL_SERVICE_NAME: "notification-service"
 
 x-monitoring-env: &monitoring-env
   NAME: *monitoring-name
@@ -289,14 +291,14 @@ services:
       - "traefik.http.routers.threshold.middlewares=threshold-strip,forward-auth"
       - "traefik.http.middlewares.threshold-strip.stripprefix.prefixes=/threshold"
 
-  alert:
-    container_name: alert-service
-    image: ghcr.io/energyconsumptionoptimizer/alert-service:latest
+  notification:
+    container_name: notification-service
+    image: ghcr.io/energyconsumptionoptimizer/notification-service:latest
     restart: unless-stopped
     networks:
       - internal
     environment:
-      <<: [*alert-env, *otel-env]
+      <<: [*notification-env, *otel-env]
     depends_on:
       mongodb:
         condition: service_healthy
@@ -306,11 +308,11 @@ services:
     logging: *common-logging
     labels:
       - "traefik.enable=true"
-      - "traefik.http.services.alert.loadbalancer.server.port=3000"
-      - "traefik.http.routers.alert.rule=PathPrefix(`/alert`)"
-      - "traefik.http.routers.alert.entrypoints=web"
-      - "traefik.http.routers.alert.middlewares=alert-strip,forward-auth"
-      - "traefik.http.middlewares.alert-strip.stripprefix.prefixes=/alert"
+      - "traefik.http.services.notification.loadbalancer.server.port=3000"
+      - "traefik.http.routers.notification.rule=PathPrefix(`/notification`)"
+      - "traefik.http.routers.notification.entrypoints=web"
+      - "traefik.http.routers.notification.middlewares=notification-strip,forward-auth"
+      - "traefik.http.middlewares.notification-strip.stripprefix.prefixes=/notification"
 
   monitoring:
     container_name: monitoring-service
@@ -493,7 +495,7 @@ services:
       kafka:
         condition: service_healthy
     command: >
-      bash -c "for topic in measurements threshold-events forecast-events user zones hookups alert-events map-events threshold-dlq alert-dlq forecast-dlq; do kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic $$topic --replication-factor 1 --partitions 1; done"
+      bash -c "for topic in measurements threshold-events forecast-events user zones hookups notification-events map-events notification-dlq threshold-dlq; do kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic $$topic --replication-factor 1 --partitions 1; done"
 
   kafka-connect:
     container_name: kafka-connect
@@ -516,7 +518,7 @@ services:
     command: >
       bash -c "
         connect-standalone /etc/kafka-connect/configs/worker.properties \
-        /etc/kafka-connect/configs/alert-connector.properties \
+        /etc/kafka-connect/configs/notification-connector.properties \
         /etc/kafka-connect/configs/forecast-connector.properties \
         /etc/kafka-connect/configs/hookup-connector.properties \
         /etc/kafka-connect/configs/map-connector.properties \
