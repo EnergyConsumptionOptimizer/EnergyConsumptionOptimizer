@@ -87,13 +87,13 @@ services:
     develop:
       watch:
         - action: sync
-          path: ../alert-service/src
+          path: ../notification-service/src
           target: /app/src
         - action: sync+restart
-          path: ../alert-service/package.json
+          path: ../notification-service/package.json
           target: /app/package.json
         - action: sync+restart
-          path: ../alert-service/tsconfig.json
+          path: ../notification-service/tsconfig.json
           target: /app/tsconfig.json
 
   monitoring:
