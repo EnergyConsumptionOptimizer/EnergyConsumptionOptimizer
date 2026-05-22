@@ -1,6 +1,6 @@
 #!/bin/bash
 # Registers all connector configs (JSON files) with Kafka Connect REST API.
-# Idempotent: handles 409 (already exists) by updating the config.
+# Uses PUT /connectors/{name}/config for idempotent upsert.
 set -euo pipefail
 
 API="http://kafka-connect:8083"
@@ -17,27 +17,19 @@ wait_for_connect() {
 }
 
 register_connector() {
-  local file="$1" name code
-  name="$(basename "$file" .json)"
+  local file="$1" name config code
+  name="$(jq -r '.name' "$file")"
+  config="$(jq '.config' "$file")"
 
-  for attempt in 1 2 3 4 5; do
-    code=$(curl -s -o /tmp/resp -w "%{http_code}" \
-      -X POST "$API/connectors" -H "Content-Type: application/json" -d "@$file")
+  code=$(curl -s -o /tmp/resp -w "%{http_code}" \
+    -X PUT "$API/connectors/$name/config" \
+    -H "Content-Type: application/json" -d "$config")
 
-    case "$code" in
-      201) echo "  $name -> created"; return 0 ;;
-      409)
-        code=$(curl -s -o /tmp/resp -w "%{http_code}" \
-          -X PUT "$API/connectors/$name/config" \
-          -H "Content-Type: application/json" -d "$(jq '.config' "$file")")
-        [ "$code" = "200" ] && { echo "  $name -> updated"; return 0; }
-        ;;
-    esac
-    [ "$attempt" -lt 5 ] && sleep 2
-  done
-
-  echo "  $name -> FAILED (HTTP $code)" >&2
-  cat /tmp/resp >&2
+  case "$code" in
+    200) echo "  $name -> updated" ;;
+    201) echo "  $name -> created" ;;
+    *)   echo "  $name -> FAILED (HTTP $code)" >&2; cat /tmp/resp >&2; exit 1 ;;
+  esac
 }
 
 wait_for_connect

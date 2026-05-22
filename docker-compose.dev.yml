@@ -79,7 +79,7 @@ services:
   notification:
     image: notification:local-dev
     build:
-      context: ../alert-service
+      context: ../notification-service
       target: dev
     ports:
       - "3004:3000"

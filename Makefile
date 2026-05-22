@@ -15,7 +15,7 @@ up:
 infra:
 	docker compose -f $(COMPOSE_BASE) up -d \
 		mongodb mongo-setup \
-		kafka kafka-init kafka-connect \
+		kafka kafka-init kafka-connect kafka-connect-init \
 		influxdb \
 		loki prometheus grafana otel-collector \
 		traefik
