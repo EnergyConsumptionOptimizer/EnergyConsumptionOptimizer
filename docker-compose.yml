@@ -495,7 +495,14 @@ services:
       kafka:
         condition: service_healthy
     command: >
-      bash -c "for topic in measurements threshold-events forecast-events user zones hookups notification-events map-events notification-dlq threshold-dlq; do kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic $$topic --replication-factor 1 --partitions 1; done"
+      bash -c "
+        for topic in measurements threshold-events forecast-events user-events zones hookup-events notification-events map-events notification-dlq threshold-dlq; do
+          kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic \$$topic --replication-factor 1 --partitions 1;
+        done;
+        for ctopic in eco-connect-configs eco-connect-offsets eco-connect-status; do
+          kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic \$$ctopic --replication-factor 1 --partitions 1 --config cleanup.policy=compact;
+        done
+      "
 
   kafka-connect:
     container_name: kafka-connect
@@ -503,28 +510,34 @@ services:
       context: .
       dockerfile_inline: |
         FROM confluentinc/cp-kafka-connect:7.9.0
-        RUN confluent-hub install --no-prompt mongodb/kafka-connect-mongodb:1.13.0
+        RUN rm -f /usr/share/java/kafka/mongo-kafka-connect-*.jar
+        RUN confluent-hub install --no-prompt mongodb/kafka-connect-mongodb:2.2.0
     restart: unless-stopped
     networks:
       - internal
     depends_on:
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       mongo-setup:
         condition: service_completed_successfully
-    volumes:
-      - ./kafka-connect/configs:/etc/kafka-connect/configs
-      - kafka-connect-data:/data
-    command: >
-      bash -c "
-        connect-standalone /etc/kafka-connect/configs/worker.properties \
-        /etc/kafka-connect/configs/notification-connector.properties \
-        /etc/kafka-connect/configs/forecast-connector.properties \
-        /etc/kafka-connect/configs/hookup-connector.properties \
-        /etc/kafka-connect/configs/map-connector.properties \
-        /etc/kafka-connect/configs/threshold-connector.properties \
-        /etc/kafka-connect/configs/user-connector.properties
-      "
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_REST_PORT: 8083
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_GROUP_ID: eco-kafka-connect-group
+      CONNECT_CONFIG_STORAGE_TOPIC: eco-connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: eco-connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: eco-connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
     healthcheck:
       test: ["CMD", "curl", "-f", "-s", "http://localhost:8083/"]
       interval: 10s
@@ -532,6 +545,25 @@ services:
       retries: 10
       start_period: 60s
     logging: *common-logging
+
+  kafka-connect-init:
+    container_name: kafka-connect-init
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM alpine:3.21
+        RUN apk add --no-cache curl jq bash
+        COPY kafka-connect/init-connectors.sh /init-connectors.sh
+        RUN chmod +x /init-connectors.sh
+        CMD ["/bin/bash", "/init-connectors.sh"]
+    restart: no
+    networks:
+      - internal
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    volumes:
+      - ./kafka-connect/configs:/etc/kafka-connect/configs:ro
 
 # OBSERVABILITY
   prometheus:
@@ -636,7 +668,6 @@ volumes:
   mongodb-data:
   influxdb-data:
   kafka-data:
-  kafka-connect-data:
   prometheus_data:
   grafana_data:
   tempo_data:

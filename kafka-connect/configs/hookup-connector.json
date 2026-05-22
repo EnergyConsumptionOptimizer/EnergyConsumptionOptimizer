@@ -1,0 +1,14 @@
+{
+  "name": "mongo-hookup-outbox-connector",
+  "config": {
+    "connector.class": "com.mongodb.kafka.connect.MongoSourceConnector",
+    "connection.uri": "mongodb://mongodb:27017/?replicaSet=rs0",
+    "database": "hookup",
+    "collection": "outboxevents",
+    "publish.full.document.only": "true",
+    "transforms": "RenameTopic",
+    "transforms.RenameTopic.type": "org.apache.kafka.connect.transforms.RegexRouter",
+    "transforms.RenameTopic.regex": ".*",
+    "transforms.RenameTopic.replacement": "hookup-events"
+  }
+}
