@@ -2,7 +2,7 @@ name: eco
 
 # SHARED CONFIGS
 x-backend-healthcheck: &backend-healthcheck
-  test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/health"]
+  test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/health"]
   interval: 10s
   timeout: 3s
   retries: 3
@@ -260,7 +260,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.threshold.loadbalancer.server.port=3000"
-      - "traefik.http.routers.threshold.rule=PathPrefix(`/threshold`)"
+      - "traefik.http.routers.threshold.rule=PathPrefix(`/threshold/api`)"
       - "traefik.http.routers.threshold.entrypoints=web"
       - "traefik.http.routers.threshold.middlewares=threshold-strip,forward-auth"
       - "traefik.http.middlewares.threshold-strip.stripprefix.prefixes=/threshold"
