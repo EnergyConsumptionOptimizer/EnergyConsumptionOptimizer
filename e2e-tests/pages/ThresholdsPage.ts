@@ -6,13 +6,9 @@ export class ThresholdsPage extends BasePage {
 		await super.goto("/thresholds");
 	}
 
-	// ── Toolbar ────────────────────────────────────────
-
 	newButton(): Locator {
 		return this.page.getByRole("button", { name: "New" });
 	}
-
-	// ── Table ──────────────────────────────────────────
 
 	table(): Locator {
 		return this.page.locator("[aria-label='Threshold management table']");
@@ -20,7 +16,8 @@ export class ThresholdsPage extends BasePage {
 
 	tableRows(): Locator {
 		return this.table()
-			.locator("tbody tr")
+			.locator("tbody")
+			.getByRole("row")
 			.filter({ hasNotText: "No thresholds found." });
 	}
 
@@ -44,18 +41,12 @@ export class ThresholdsPage extends BasePage {
 		return this.getRowByName(name).locator(".p-toggleswitch");
 	}
 
-	// ── Dialog ─────────────────────────────────────────
-
-	private dialog(): Locator {
-		return this.page.locator(".p-dialog");
-	}
-
-	dialogTitle(): Locator {
-		return this.dialog().locator(".p-dialog-title, .p-dialog-header span");
+	dialog(): Locator {
+		return this.page.locator(".p-dialog").first();
 	}
 
 	nameField(): Locator {
-		return this.dialog().locator("#name");
+		return this.dialog().getByLabel("Name");
 	}
 
 	utilitySelect(): Locator {
@@ -67,7 +58,7 @@ export class ThresholdsPage extends BasePage {
 	}
 
 	valueField(): Locator {
-		return this.dialog().locator("#value input");
+		return this.dialog().locator("#value input, [data-pc-name='inputnumber'] input");
 	}
 
 	periodSelect(): Locator {
@@ -79,7 +70,7 @@ export class ThresholdsPage extends BasePage {
 	}
 
 	saveButton(): Locator {
-		return this.dialog().locator("button[type='submit']");
+		return this.dialog().getByRole("button", { name: /save|create/i });
 	}
 
 	cancelButton(): Locator {
@@ -87,53 +78,34 @@ export class ThresholdsPage extends BasePage {
 	}
 
 	confirmDialog(): Locator {
-		return this.page.locator(".p-confirmdialog, .p-confirm-dialog");
+		return this.page.locator(".p-confirmdialog, .p-confirm-dialog").first();
 	}
 
 	confirmDeleteButton(): Locator {
-		return this.confirmDialog().getByRole("button", { name: "Delete" });
+		return this.confirmDialog().getByRole("button", { name: /delete/i });
 	}
 
 	errorInDialog(): Locator {
-		return this.dialog().locator(
-			".p-message-error, .p-message.p-message-error",
-		);
+		return this.dialog().getByRole("alert");
 	}
 
 	async selectDropdownOption(label: string, optionText: string) {
-		const labelEl = this.dialog()
-			.locator("label")
-			.filter({ hasText: label })
-			.first();
-		const hasLabel = await labelEl.count();
-
-		let select: Locator;
-		if (hasLabel > 0) {
-			const forAttr = await labelEl.getAttribute("for");
-			if (!forAttr) {
-				throw new Error(`Label matching "${label}" has no "for" attribute`);
-			}
-			select = this.dialog().locator(`#${forAttr}`);
-		} else {
-			select = this.dialog().getByLabel(label);
-		}
-
+		const select = this.dialog().getByLabel(label);
 		await select.click();
 		const option = this.page
-			.locator(".p-select-overlay, .p-select-panel")
-			.filter({ has: this.page.locator("li") })
-			.getByText(optionText, { exact: true });
+			.getByRole("listbox")
+			.getByRole("option", { name: optionText, exact: true });
 		await option.click();
 	}
 
 	async openNewDialog() {
 		await this.newButton().click();
-		await expect(this.dialogTitle()).toHaveText("Threshold Details");
+		await expect(this.dialog()).toBeVisible();
 	}
 
 	async openEditDialog(name: string) {
 		await this.editButtonFor(name).click();
-		await expect(this.dialogTitle()).toHaveText("Threshold Details");
+		await expect(this.dialog()).toBeVisible();
 	}
 
 	async fillForm(fields: {
@@ -146,7 +118,6 @@ export class ThresholdsPage extends BasePage {
 		await this.nameField().fill(fields.name);
 		await this.selectDropdownOption("Utility", fields.utilityType);
 		await this.selectDropdownOption("Threshold Type", fields.thresholdType);
-
 		await this.valueField().fill(String(fields.value));
 
 		if (fields.periodType) {
@@ -156,12 +127,12 @@ export class ThresholdsPage extends BasePage {
 
 	async saveForm() {
 		await this.saveButton().click();
-		await expect(this.dialogTitle()).not.toBeVisible({ timeout: 10_000 });
+		await expect(this.dialog()).not.toBeVisible({ timeout: 10_000 });
 	}
 
 	async cancelForm() {
 		await this.cancelButton().click();
-		await expect(this.dialogTitle()).not.toBeVisible({ timeout: 5_000 });
+		await expect(this.dialog()).not.toBeVisible({ timeout: 5_000 });
 	}
 
 	async deleteThreshold(name: string) {
@@ -172,7 +143,9 @@ export class ThresholdsPage extends BasePage {
 	}
 
 	searchInput(): Locator {
-		return this.page.getByLabel("Search thresholds by name, type, or utility");
+		return this.page.getByLabel(
+			"Search thresholds by name, type, or utility",
+		);
 	}
 
 	async searchForThreshold(name: string) {

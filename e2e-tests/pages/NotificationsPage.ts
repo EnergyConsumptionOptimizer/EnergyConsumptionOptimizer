@@ -7,7 +7,7 @@ export class NotificationsPage extends BasePage {
 	}
 
 	heading(): Locator {
-		return this.page.locator("h2", { hasText: "Notifications" });
+		return this.page.getByRole("heading", { name: "Notifications" });
 	}
 
 	table(): Locator {
@@ -16,9 +16,10 @@ export class NotificationsPage extends BasePage {
 
 	tableRows(): Locator {
 		return this.table()
-			.locator("tbody tr")
+			.locator("tbody")
+			.getByRole("row")
 			.filter({
-				has: this.page.locator("[data-testid='notification-source-id']"),
+				has: this.page.getByTestId("notification-source-id"),
 			});
 	}
 
@@ -44,9 +45,12 @@ export class NotificationsPage extends BasePage {
 		return this.page.getByText("No notifications available.");
 	}
 
-	async assertNotificationVisible(sourceId: string) {
+	async assertNotificationVisible(
+		sourceId: string,
+		options?: { timeout?: number },
+	) {
 		await expect(this.getRowBySourceId(sourceId)).toBeVisible({
-			timeout: 5_000,
+			timeout: options?.timeout ?? 5_000,
 		});
 	}
 
@@ -103,15 +107,13 @@ export class NotificationsPage extends BasePage {
 	}
 
 	markReadBulkButton(): Locator {
-		return this.page
-			.getByRole("toolbar")
-			.getByRole("button", { name: /Mark Read/ });
+		return this.page.getByRole("button", { name: /Mark Read/ });
 	}
 
 	deleteBulkButton(): Locator {
-		return this.page
-			.getByRole("toolbar")
-			.getByRole("button", { name: /Delete.*selected notifications/ });
+		return this.page.getByRole("button", {
+			name: /Delete.*selected|Delete$/i,
+		});
 	}
 
 	async selectRow(sourceId: string) {

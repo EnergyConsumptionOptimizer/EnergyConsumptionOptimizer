@@ -2,15 +2,14 @@ import { BASE_URL, expect, test } from "@/fixtures/base-fixtures";
 import { createUser, deleteUser, listUsers } from "@/helpers/api";
 import { uniqueUsername } from "@/helpers/test-data";
 import { LoginPage } from "@/pages/LoginPage";
+import { ProfilePage } from "@/pages/ProfilePage";
 import { UsersPage } from "@/pages/UsersPage";
 
 test.describe("Feature: User CRUD Operations", () => {
 	let createdUserIds: string[];
 
-	test.beforeEach(async ({ adminPage }) => {
+	test.beforeEach(() => {
 		createdUserIds = [];
-		const usersPage = new UsersPage(adminPage);
-		await usersPage.goto();
 	});
 
 	test.afterEach(async () => {
@@ -27,7 +26,8 @@ test.describe("Feature: User CRUD Operations", () => {
 		let username: string;
 
 		await test.step("Given the admin is on the users page", async () => {
-			// beforeEach handles navigation
+			const usersPage = new UsersPage(adminPage);
+			await usersPage.goto();
 		});
 
 		await test.step("When they create a new household user", async () => {
@@ -63,6 +63,7 @@ test.describe("Feature: User CRUD Operations", () => {
 
 		await test.step("When the admin attempts to create another user with the same username", async () => {
 			const usersPage = new UsersPage(adminPage);
+			await usersPage.goto();
 			await usersPage.openNewUserDialog();
 			await usersPage.fillUserForm(username, "other-pass");
 			await usersPage.saveForm();
@@ -96,6 +97,7 @@ test.describe("Feature: User CRUD Operations", () => {
 
 		await test.step("When the admin edits the username", async () => {
 			const usersPage = new UsersPage(adminPage);
+			await usersPage.goto();
 			await usersPage.editUser(oldName);
 			await usersPage.usernameField().fill(newName);
 			await usersPage.saveForm();
@@ -117,8 +119,9 @@ test.describe("Feature: User CRUD Operations", () => {
 		adminPage,
 		request,
 	}) => {
-		let username: string;
-		const newPassword = "newpass456";
+	test.setTimeout(45_000);
+	let username: string;
+	const newPassword = "newpass456";
 
 		await test.step("Given a user exists in the system", async () => {
 			username = uniqueUsername("pw-change");
@@ -128,6 +131,7 @@ test.describe("Feature: User CRUD Operations", () => {
 
 		await test.step("When the admin changes their password", async () => {
 			const usersPage = new UsersPage(adminPage);
+			await usersPage.goto();
 			await usersPage.editUser(username);
 			await usersPage.newPasswordField().fill(newPassword);
 			await usersPage.confirmPasswordField().fill(newPassword);
@@ -160,6 +164,7 @@ test.describe("Feature: User CRUD Operations", () => {
 			createdUserIds.push(user.id);
 
 			const usersPage = new UsersPage(adminPage);
+			await usersPage.goto();
 			await usersPage.editUser(username);
 			await usersPage.newPasswordField().fill(newPassword);
 			await usersPage.confirmPasswordField().fill(newPassword);
@@ -190,6 +195,7 @@ test.describe("Feature: User CRUD Operations", () => {
 
 		await test.step("When the admin deletes the user", async () => {
 			const usersPage = new UsersPage(adminPage);
+			await usersPage.goto();
 			await usersPage.assertUserInTable(username);
 			await usersPage.deleteUser(username);
 		});
@@ -202,14 +208,15 @@ test.describe("Feature: User CRUD Operations", () => {
 
 	test("Scenario: admin views user list", async ({ adminPage }) => {
 		await test.step("Given the admin is on the users page", async () => {
-			// beforeEach handles navigation
+			const usersPage = new UsersPage(adminPage);
+			await usersPage.goto();
 		});
 
 		await test.step("Then the user table should be visible with rows", async () => {
 			const usersPage = new UsersPage(adminPage);
 			await expect(usersPage.table()).toBeVisible();
 			await expect(usersPage.newUserButton()).toBeVisible();
-			await expect(usersPage.table().locator("tbody tr").first()).toBeVisible();
+			await expect(usersPage.table().locator("tbody").getByRole("row").first()).toBeVisible();
 		});
 	});
 });
@@ -242,27 +249,19 @@ test.describe("Feature: User Self-Service", () => {
 		let newUsername: string;
 
 		await test.step("Given a household user is on their profile page", async () => {
-			const usersPage = new UsersPage(userPage);
-			await usersPage.gotoProfile();
-			await usersPage.openEditProfileDialog();
+			const profilePage = new ProfilePage(userPage);
+			await profilePage.goto();
 		});
 
 		await test.step("When they edit and save their username", async () => {
-			const usersPage = new UsersPage(userPage);
+			const profilePage = new ProfilePage(userPage);
 			newUsername = uniqueUsername("self-edit");
-			await usersPage.usernameField().fill(newUsername);
-			await usersPage.saveForm();
+			await profilePage.changeUsername(newUsername);
 		});
 
-		await test.step("Then the save should succeed", async () => {
-			const usersPage = new UsersPage(userPage);
-			await usersPage.assertSaveSucceeded();
-		});
-
-		await test.step("And the new username should be visible on the page", async () => {
-			await expect(userPage.getByText(newUsername)).toBeVisible({
-				timeout: 5_000,
-			});
+		await test.step("Then the new username should be visible on the page", async () => {
+			const profilePage = new ProfilePage(userPage);
+			await profilePage.assertUsernameVisible(newUsername);
 		});
 	});
 
@@ -273,21 +272,18 @@ test.describe("Feature: User Self-Service", () => {
 		const newPassword = "newpass789";
 
 		await test.step("Given a household user is on their profile page", async () => {
-			const usersPage = new UsersPage(userPage);
-			await usersPage.gotoProfile();
-			currentUsername = await usersPage.profileUsernameDisplay().textContent();
+			const profilePage = new ProfilePage(userPage);
+			await profilePage.goto();
+			currentUsername =
+				await profilePage.profileUsernameDisplay().textContent();
 			if (!currentUsername) {
 				throw new Error("Could not read current username from profile page");
 			}
-			await usersPage.openEditProfileDialog();
 		});
 
 		await test.step("When they change their password and log out", async () => {
-			const usersPage = new UsersPage(userPage);
-			await usersPage.newPasswordField().fill(newPassword);
-			await usersPage.confirmPasswordField().fill(newPassword);
-			await usersPage.saveForm();
-			await usersPage.assertSaveSucceeded();
+			const profilePage = new ProfilePage(userPage);
+			await profilePage.changePassword(newPassword);
 			await userPage.getByRole("menuitem", { name: "Logout" }).click();
 			await expect(userPage).toHaveURL(/\/auth\/login/, {
 				timeout: 10_000,
@@ -296,12 +292,13 @@ test.describe("Feature: User Self-Service", () => {
 
 		await test.step("And they log in with the new password", async () => {
 			const loginPage = new LoginPage(userPage);
-			await loginPage.login(currentUsername!, newPassword);
+			const username = currentUsername;
+			if (!username) throw new Error("Username not found");
+			await loginPage.login(username, newPassword);
 		});
 
 		await test.step("Then they should be redirected to the dashboard", async () => {
-			const loginPage = new LoginPage(userPage);
-			await loginPage.assertRedirectedToDashboard();
+			await expect(userPage).toHaveURL("/");
 		});
 	});
 });

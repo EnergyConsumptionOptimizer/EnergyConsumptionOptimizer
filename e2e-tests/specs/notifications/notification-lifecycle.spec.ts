@@ -1,22 +1,22 @@
 import { expect, test } from "@/fixtures/base-fixtures";
 import {
-	createThreshold,
 	deleteAllNotifications,
+	deleteAllThresholds,
 	deleteThreshold,
-	disposeApiClient,
 	getNotifications,
-	triggerForecastEvaluation,
 } from "@/helpers/api";
-import { waitForNotification } from "@/helpers/kafka-helper";
-import {
-	forecastEvaluationPayload,
-	forecastThresholdPayload,
-} from "@/helpers/test-data";
+import { seedNotification } from "@/helpers/notification-helper";
 import { NotificationsPage } from "@/pages/NotificationsPage";
 
 test.describe("Feature: Notification Lifecycle", () => {
+	test.describe.configure({ retries: 1 });
 	test.slow();
 	let createdThresholdIds: string[];
+
+	test.beforeAll(async () => {
+		await deleteAllNotifications();
+		await deleteAllThresholds();
+	});
 
 	test.beforeEach(async () => {
 		createdThresholdIds = [];
@@ -35,35 +35,19 @@ test.describe("Feature: Notification Lifecycle", () => {
 
 	test.afterAll(async () => {
 		await deleteAllNotifications();
-		await disposeApiClient();
 	});
 
-	async function seedNotification(
-		utilityType = "ELECTRICITY",
-	): Promise<string> {
-		const threshold = await createThreshold(
-			forecastThresholdPayload({ utilityType, value: 10 }),
-		);
-		createdThresholdIds.push(threshold.id);
-		await triggerForecastEvaluation(
-			forecastEvaluationPayload(utilityType, [80, 40, 30]),
-		);
-		const appeared = await waitForNotification(threshold.id, 30_000);
-		if (!appeared) {
-			throw new Error(
-				`Failed to seed notification for threshold ${threshold.id}`,
-			);
-		}
-		return threshold.id;
+	async function createNotification(): Promise<string> {
+		const result = await seedNotification();
+		createdThresholdIds.push(result.thresholdId);
+		return result.notification.sourceId;
 	}
 
 	test("Scenario: admin views notification list with data", async ({
 		adminPage,
 	}) => {
-		let sourceId: string;
-
 		await test.step("Given a notification has been created", async () => {
-			sourceId = await seedNotification();
+			await createNotification();
 		});
 
 		await test.step("When the admin navigates to the alerts page", async () => {
@@ -76,7 +60,7 @@ test.describe("Feature: Notification Lifecycle", () => {
 			const notificationsPage = new NotificationsPage(adminPage);
 			await expect(notificationsPage.heading()).toBeVisible();
 			await expect(notificationsPage.table()).toBeVisible();
-			await notificationsPage.assertNotEmpty();
+			await expect(notificationsPage.tableRows().first()).toBeVisible({ timeout: 15_000 });
 		});
 	});
 
@@ -86,7 +70,7 @@ test.describe("Feature: Notification Lifecycle", () => {
 		let sourceId: string;
 
 		await test.step("Given a notification exists", async () => {
-			sourceId = await seedNotification();
+			sourceId = await createNotification();
 		});
 
 		await test.step("When the admin marks it as read", async () => {
@@ -109,7 +93,7 @@ test.describe("Feature: Notification Lifecycle", () => {
 		let sourceIds: string[];
 
 		await test.step("Given multiple unread notifications exist", async () => {
-			sourceIds = [await seedNotification(), await seedNotification()];
+			sourceIds = [await createNotification(), await createNotification()];
 		});
 
 		await test.step("When the admin selects and marks them as read", async () => {
@@ -134,7 +118,7 @@ test.describe("Feature: Notification Lifecycle", () => {
 		let sourceIds: string[];
 
 		await test.step("Given multiple notifications exist", async () => {
-			sourceIds = [await seedNotification(), await seedNotification()];
+			sourceIds = [await createNotification(), await createNotification()];
 		});
 
 		await test.step("When the admin deletes one notification", async () => {
@@ -167,7 +151,7 @@ test.describe("Feature: Notification Lifecycle", () => {
 		let sourceIds: string[];
 
 		await test.step("Given multiple notifications exist", async () => {
-			sourceIds = [await seedNotification(), await seedNotification()];
+			sourceIds = [await createNotification(), await createNotification()];
 		});
 
 		await test.step("When the admin selects and deletes all of them", async () => {

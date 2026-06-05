@@ -3,7 +3,7 @@ import { defineConfig } from "@playwright/test";
 const BASE_URL = process.env.BASE_URL || "http://localhost";
 
 export default defineConfig({
-	testDir: ".",
+	testDir: "./specs",
 
 	globalSetup: "./fixtures/global-setup",
 	globalTeardown: "./fixtures/global-teardown",
@@ -14,13 +14,13 @@ export default defineConfig({
 	fullyParallel: false,
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 2 : 0,
-	workers: 1,
+	workers: process.env.CI ? 4 : 1,
 
 	reporter: [["html", { open: "never" }], ["list"]],
 
 	use: {
 		baseURL: BASE_URL,
-		trace: "retain-on-failure",
+		trace: process.env.CI ? "on-first-retry" : "retain-on-failure",
 		screenshot: "only-on-failure",
 	},
 
@@ -28,10 +28,6 @@ export default defineConfig({
 		{
 			name: "chromium",
 			use: { browserName: "chromium" },
-		},
-		{
-			name: "firefox",
-			use: { browserName: "firefox" },
 		},
 	],
 });

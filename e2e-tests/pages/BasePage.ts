@@ -13,13 +13,11 @@ export class BasePage {
 	}
 
 	toastMessage(): Locator {
-		return this.page.locator(".p-toast-message, .p-message");
+		return this.page.getByRole("alert").or(this.page.getByRole("status"));
 	}
 
 	toastError(): Locator {
-		return this.page.locator(
-			".p-toast-message-error, .p-message-error, .p-toast-message.p-toast-message-error",
-		);
+		return this.page.getByRole("alert");
 	}
 
 	async assertToastVisible(text?: string) {
@@ -40,7 +38,7 @@ export class BasePage {
 
 	sidebarLink(label: string): Locator {
 		return this.page
-			.locator("nav, .sidebar, [role='navigation']")
+			.getByRole("navigation")
 			.getByRole("link", { name: label });
 	}
 
@@ -49,7 +47,7 @@ export class BasePage {
 	}
 
 	heading(): Locator {
-		return this.page.locator("h1, h2").first();
+		return this.page.getByRole("heading").first();
 	}
 
 	async assertUrlContains(path: string) {

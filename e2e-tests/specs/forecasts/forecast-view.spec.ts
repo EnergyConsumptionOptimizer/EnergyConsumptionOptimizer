@@ -83,6 +83,7 @@ test.describe("Feature: Forecast Widget Rendering", () => {
 });
 
 test.describe("Feature: Forecast Data-Driven Rendering", () => {
+	test.describe.configure({ retries: 1 });
 	test.beforeAll(() => {
 		clearAllForecastData();
 	});

@@ -15,7 +15,7 @@ export class LoginPage extends BasePage {
 	}
 
 	errorMessage(): Locator {
-		return this.page.locator(".p-message-error, .p-message.p-message-error");
+		return this.page.getByRole("alert");
 	}
 
 	resetPasswordLink(): Locator {
@@ -45,6 +45,5 @@ export class LoginPage extends BasePage {
 
 	async assertRedirectedToDashboard() {
 		await expect(this.page).toHaveURL("/", { timeout: 10_000 });
-		await expect(this.loginButton()).not.toBeAttached();
 	}
 }

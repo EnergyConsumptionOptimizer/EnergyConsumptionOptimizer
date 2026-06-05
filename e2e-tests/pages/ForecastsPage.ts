@@ -36,10 +36,7 @@ export class ForecastsPage extends BasePage {
 	}
 
 	async assertWidgetHasContent(utility: string) {
-		const lower = utility.toLowerCase();
-		const content = this.page.locator(
-			`[data-testid="forecast-${lower}-chart"], [data-testid="forecast-${lower}-empty"]`,
-		);
+		const content = this.chart(utility).or(this.emptyState(utility));
 		await expect(content.first()).toBeVisible({ timeout: 10_000 });
 	}
 

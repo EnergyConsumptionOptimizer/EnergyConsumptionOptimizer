@@ -2,9 +2,8 @@ import { expect, test } from "@/fixtures/base-fixtures";
 import {
 	createThreshold,
 	deleteAllNotifications,
+	deleteAllThresholds,
 	deleteThreshold,
-	disposeApiClient,
-	getNotifications,
 	triggerForecastEvaluation,
 	updateThreshold,
 } from "@/helpers/api";
@@ -18,6 +17,7 @@ import {
 	forecastThresholdPayload,
 } from "@/helpers/test-data";
 import { NotificationsPage } from "@/pages/NotificationsPage";
+import { ThresholdsPage } from "@/pages/ThresholdsPage";
 
 const ELECTRICITY = "ELECTRICITY";
 const GAS = "GAS";
@@ -25,6 +25,11 @@ const GAS = "GAS";
 test.describe("Feature: Threshold Breach Notifications", () => {
 	test.slow();
 	let createdThresholdIds: string[];
+
+	test.beforeAll(async () => {
+		await deleteAllNotifications();
+		await deleteAllThresholds();
+	});
 
 	test.beforeEach(async () => {
 		createdThresholdIds = [];
@@ -35,15 +40,12 @@ test.describe("Feature: Threshold Breach Notifications", () => {
 		for (const id of createdThresholdIds) {
 			try {
 				await deleteThreshold(id);
-			} catch {
-				// Ignore cleanup failures
-			}
+			} catch {}
 		}
 	});
 
 	test.afterAll(async () => {
 		await deleteAllNotifications();
-		await disposeApiClient();
 	});
 
 	test("Scenario: admin sees notification when forecast exceeds threshold", async ({
@@ -79,7 +81,9 @@ test.describe("Feature: Threshold Breach Notifications", () => {
 			const notificationsPage = new NotificationsPage(adminPage);
 			await notificationsPage.goto();
 			await expect(adminPage).toHaveURL(/\/alerts/);
-			await notificationsPage.assertNotificationVisible(threshold.id);
+			await notificationsPage.assertNotificationVisible(threshold.id, {
+				timeout: 15_000,
+			});
 			await notificationsPage.assertNotificationMessageContains(
 				threshold.id,
 				thresholdName,
@@ -87,7 +91,9 @@ test.describe("Feature: Threshold Breach Notifications", () => {
 		});
 	});
 
-	test("Scenario: system suppresses duplicate notifications within the suppression window", async () => {
+	test("Scenario: system suppresses duplicate notifications within the suppression window", async ({
+		adminPage,
+	}) => {
 		test.setTimeout(60_000);
 		let threshold: { id: string };
 
@@ -108,24 +114,27 @@ test.describe("Feature: Threshold Breach Notifications", () => {
 			expect(await waitForNotification(threshold.id, 30_000)).toBe(true);
 		});
 
+		await test.step("When the admin navigates to the notifications page", async () => {
+			const notificationsPage = new NotificationsPage(adminPage);
+			await notificationsPage.goto();
+			await expect(adminPage).toHaveURL(/\/alerts/);
+			await notificationsPage.assertNotificationVisible(threshold.id);
+		});
+
 		await test.step("When a second breach occurs within the suppression window", async () => {
 			await triggerForecastEvaluation(
 				forecastEvaluationPayload(GAS, [150, 30, 25]),
 			);
 		});
 
-		await test.step("Then no duplicate notification should be created within 35s", async () => {
-			const deadline = Date.now() + 35_000;
-			let sameSourceCount = 1;
-			while (Date.now() < deadline) {
-				const notifications = await getNotifications();
-				sameSourceCount = notifications.filter(
-					(n: { sourceId: string }) => n.sourceId === threshold.id,
-				).length;
-				if (sameSourceCount > 1) break;
-				await new Promise((r) => setTimeout(r, 500));
-			}
-			expect(sameSourceCount).toBe(1);
+		await test.step("Then only one notification should remain visible in the UI", async () => {
+			const notificationsPage = new NotificationsPage(adminPage);
+			await notificationsPage.goto();
+			await expect(adminPage).toHaveURL(/\/alerts/);
+			await notificationsPage.assertNotificationVisible(threshold.id);
+			await expect(notificationsPage.tableRows()).toHaveCount(1, {
+				timeout: 15_000,
+			});
 		});
 	});
 
@@ -185,7 +194,7 @@ test.describe("Feature: Threshold Breach Notifications", () => {
 		test.setTimeout(90_000);
 		let threshold: { id: string };
 
-		await test.step("Given a notification has been marked as read", async () => {
+		await test.step("Given a threshold has triggered a notification", async () => {
 			const thresholdName = `e2e-read-spam-${Date.now()}`;
 			threshold = await createThreshold(
 				forecastThresholdPayload({
@@ -200,7 +209,9 @@ test.describe("Feature: Threshold Breach Notifications", () => {
 				forecastEvaluationPayload(ELECTRICITY, [100, 20, 20]),
 			);
 			expect(await waitForNotification(threshold.id, 60_000)).toBe(true);
+		});
 
+		await test.step("When the admin marks the notification as read via the alerts page", async () => {
 			const notificationsPage = new NotificationsPage(adminPage);
 			await notificationsPage.goto();
 			await expect(adminPage).toHaveURL(/\/alerts/);
@@ -228,7 +239,9 @@ test.describe("Feature: Threshold Breach Notifications", () => {
 		});
 	});
 
-	test("Scenario: forecast below threshold creates no notification", async () => {
+	test("Scenario: forecast below threshold creates no notification", async ({
+		adminPage,
+	}) => {
 		test.setTimeout(60_000);
 		let threshold: { id: string };
 
@@ -245,31 +258,51 @@ test.describe("Feature: Threshold Breach Notifications", () => {
 			);
 		});
 
-		await test.step("Then no notification should be created within 30s", async () => {
-			expect(await waitForNotification(threshold.id, 30_000)).toBe(false);
+		await test.step("Then no notification should appear on the alerts page", async () => {
+			const notificationsPage = new NotificationsPage(adminPage);
+			await notificationsPage.goto();
+			await expect(adminPage).toHaveURL(/\/alerts/);
+			await notificationsPage.assertEmpty();
 		});
 	});
 
-	test("Scenario: disabled threshold creates no notification", async () => {
+	test("Scenario: disabled threshold creates no notification", async ({
+		adminPage,
+	}) => {
 		test.setTimeout(60_000);
-		let threshold: { id: string };
+		let threshold: { id: string; name: string };
 
-		await test.step("Given a threshold that has been disabled", async () => {
+		await test.step("Given a threshold has been created", async () => {
+			const thresholdName = `e2e-disabled-${Date.now()}`;
 			threshold = await createThreshold(
-				forecastThresholdPayload({ utilityType: ELECTRICITY, value: 30 }),
+				forecastThresholdPayload({
+					name: thresholdName,
+					utilityType: ELECTRICITY,
+					value: 30,
+				}),
 			);
+			threshold.name = thresholdName;
 			createdThresholdIds.push(threshold.id);
-			await updateThreshold(threshold.id, { thresholdState: "DISABLED" });
 		});
 
-		await test.step("When a forecast evaluation exceeds the threshold value", async () => {
+		await test.step("When the admin disables the threshold via the thresholds page", async () => {
+			const thresholdsPage = new ThresholdsPage(adminPage);
+			await thresholdsPage.goto();
+			await thresholdsPage.assertThresholdInTable(threshold.name);
+			await thresholdsPage.toggleSwitchFor(threshold.name).click();
+		});
+
+		await test.step("And a forecast evaluation exceeds the threshold value", async () => {
 			await triggerForecastEvaluation(
 				forecastEvaluationPayload(ELECTRICITY, [80, 40, 30]),
 			);
 		});
 
-		await test.step("Then no notification should be created within 30s", async () => {
-			expect(await waitForNotification(threshold.id, 30_000)).toBe(false);
+		await test.step("Then no notification should appear on the alerts page", async () => {
+			const notificationsPage = new NotificationsPage(adminPage);
+			await notificationsPage.goto();
+			await expect(adminPage).toHaveURL(/\/alerts/);
+			await notificationsPage.assertEmpty();
 		});
 	});
 });

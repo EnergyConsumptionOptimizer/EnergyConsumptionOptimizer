@@ -1,34 +1,101 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator } from "@playwright/test";
 import { BasePage } from "./BasePage";
 
 export class DashboardPage extends BasePage {
-	readonly mapContainer: Locator;
-	readonly consumptionCharts: Locator;
-
-	constructor(page: Page) {
-		super(page);
-		this.mapContainer = page.locator(
-			".map-container, [data-testid='map'], svg, canvas",
-		);
-		this.consumptionCharts = page.locator(
-			".chart, [data-testid='consumption-chart'], canvas",
-		);
-	}
-
 	async goto() {
 		await super.goto("/");
 	}
 
-	async assertDashboardLoaded() {
-		await expect(this.logoutButton()).toBeVisible({ timeout: 10_000 });
+	heading(): Locator {
+		return this.page.getByRole("heading", { name: "Dashboard" });
 	}
 
-	async assertHasContent() {
-		await expect(this.page.locator("body")).toBeVisible();
+	statsCard(label: string): Locator {
+		return this.page.getByRole("region", { name: `${label} statistics` });
+	}
+
+	realTimeChartSection(): Locator {
+		return this.page.locator(
+			'[aria-labelledby="real-time-consumptions-title"]',
+		);
+	}
+
+	historicalChartSection(): Locator {
+		return this.page.locator(
+			'[aria-labelledby="historical-consumptions-title"]',
+		);
+	}
+
+	houseMap(): Locator {
+		return this.page.getByRole("img", {
+			name: "Interactive floor plan map",
+		});
+	}
+
+	hookupMarker(name: string): Locator {
+		return this.page.locator(
+			`[data-testid="hookup-marker"][data-hookup-name="${name}"]`,
+		);
+	}
+
+	activeHookupMarker(name: string): Locator {
+		return this.hookupMarker(name).filter({
+			has: this.page.locator("title", { hasText: "(Active)" }),
+		});
 	}
 
 	logoutButton(): Locator {
 		return this.page.getByRole("menuitem", { name: "Logout" });
+	}
+
+	async assertPageLoaded() {
+		await expect(this.heading()).toBeVisible();
+		await expect(this.page).toHaveURL("/");
+	}
+
+	async assertStatsCardsVisible() {
+		for (const label of ["Gas", "Water", "Electricity"]) {
+			await this.assertStatsCardVisible(label);
+		}
+	}
+
+	async assertStatsCardVisible(label: string, timeout = 10_000) {
+		await expect(this.statsCard(label)).toBeVisible({ timeout });
+	}
+
+	async assertChartsVisible() {
+		await expect(this.realTimeChartSection()).toBeVisible();
+		await expect(this.historicalChartSection()).toBeVisible();
+	}
+
+	async assertHouseMapVisible() {
+		await expect(this.houseMap()).toBeVisible();
+	}
+
+	async assertHookupVisible(name: string) {
+		await expect(this.hookupMarker(name)).toBeVisible({ timeout: 5_000 });
+	}
+
+	async assertHookupActive(name: string, timeoutMs = 30_000) {
+		await expect(this.activeHookupMarker(name)).toBeVisible({
+			timeout: timeoutMs,
+		});
+	}
+
+	async assertHookupNotVisible(name: string) {
+		await expect(this.hookupMarker(name)).not.toBeVisible({ timeout: 5_000 });
+	}
+
+	realTimeChartCanvas(): Locator {
+		return this.realTimeChartSection().locator("canvas");
+	}
+
+	historicalChartCanvas(): Locator {
+		return this.historicalChartSection().locator("canvas");
+	}
+
+	async assertDashboardLoaded() {
+		await expect(this.logoutButton()).toBeVisible({ timeout: 10_000 });
 	}
 
 	async logout() {

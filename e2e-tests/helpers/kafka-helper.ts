@@ -1,48 +1,44 @@
+import { expect } from "@playwright/test";
 import { getNotifications } from "./api";
 
 export async function waitForNotification(
 	sourceId: string,
 	timeoutMs = 30_000,
 ): Promise<boolean> {
-	const start = Date.now();
-	const interval = 500;
-
-	while (Date.now() - start < timeoutMs) {
-		try {
-			const notifications = await getNotifications();
-			const found = notifications.some(
-				(n: { sourceId: string }) => n.sourceId === sourceId,
-			);
-			if (found) return true;
-		} catch {
-			// Retry on network errors
-		}
-		await new Promise((resolve) => setTimeout(resolve, interval));
+	try {
+		await expect
+			.poll(
+				async () => {
+					const notifications = await getNotifications();
+					return notifications.some(
+						(n: { sourceId: string }) => n.sourceId === sourceId,
+					);
+				},
+				{ timeout: timeoutMs },
+			)
+			.toBe(true);
+		return true;
+	} catch {
+		return false;
 	}
-
-	return false;
 }
 
 export async function waitForNotificationCount(
 	minCount: number,
 	timeoutMs = 30_000,
 ): Promise<number> {
-	const start = Date.now();
-	const interval = 500;
-
-	while (Date.now() - start < timeoutMs) {
-		try {
-			const notifications = await getNotifications();
-			if (notifications.length >= minCount) return notifications.length;
-		} catch {
-			// Retry on network errors
-		}
-		await new Promise((resolve) => setTimeout(resolve, interval));
-	}
-
-	throw new Error(
-		`Expected at least ${minCount} notifications within ${timeoutMs}ms`,
-	);
+	let count = 0;
+	await expect
+		.poll(
+			async () => {
+				const notifications = await getNotifications();
+				count = notifications.length;
+				return count;
+			},
+			{ timeout: timeoutMs },
+		)
+		.toBeGreaterThanOrEqual(minCount);
+	return count;
 }
 
 export async function waitForNotificationMatching(
@@ -53,19 +49,30 @@ export async function waitForNotificationMatching(
 	}) => boolean,
 	timeoutMs = 30_000,
 ): Promise<Record<string, unknown> | null> {
-	const start = Date.now();
-	const interval = 500;
-
-	while (Date.now() - start < timeoutMs) {
-		try {
-			const notifications = await getNotifications();
-			const match = notifications.find(predicate);
-			if (match) return match;
-		} catch {
-			// Retry on network errors
-		}
-		await new Promise((resolve) => setTimeout(resolve, interval));
+	let match: Record<string, unknown> | undefined;
+	try {
+		await expect
+			.poll(
+				async () => {
+					const notifications = await getNotifications();
+					match = notifications.find(predicate);
+					return match;
+				},
+				{ timeout: timeoutMs },
+			)
+			.toBeDefined();
+	} catch {
+		return null;
 	}
+	return match ?? null;
+}
 
-	return null;
+export async function waitForNotificationBySourceId(
+	sourceId: string,
+	timeoutMs = 30_000,
+): Promise<{ id: string; sourceId: string; message: string } | null> {
+	return waitForNotificationMatching(
+		(n) => n.sourceId === sourceId,
+		timeoutMs,
+	) as Promise<{ id: string; sourceId: string; message: string } | null>;
 }

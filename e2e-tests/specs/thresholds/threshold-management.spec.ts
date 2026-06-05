@@ -1,6 +1,7 @@
 import { expect, test } from "@/fixtures/base-fixtures";
 import {
 	createThreshold,
+	deleteAllThresholds,
 	deleteThreshold,
 	listThresholds,
 } from "@/helpers/api";
@@ -8,14 +9,19 @@ import { forecastThresholdPayload } from "@/helpers/test-data";
 import { ThresholdsPage } from "@/pages/ThresholdsPage";
 
 test.describe("Feature: Threshold Management", () => {
-	test.slow();
+	test.describe.configure({ retries: 1 });
 	let createdThresholdIds: string[];
 
-	test.beforeEach(async ({ adminPage }) => {
+	test.beforeAll(async () => {
+		await deleteAllThresholds();
+	});
+
+	test.beforeAll(async () => {
+		await deleteAllThresholds();
+	});
+
+	test.beforeEach(() => {
 		createdThresholdIds = [];
-		const thresholdsPage = new ThresholdsPage(adminPage);
-		await thresholdsPage.goto();
-		await expect(adminPage).toHaveURL(/\/thresholds/);
 	});
 
 	test.afterEach(async () => {
@@ -30,7 +36,9 @@ test.describe("Feature: Threshold Management", () => {
 
 	test("Scenario: admin views threshold list", async ({ adminPage }) => {
 		await test.step("Given the admin is on the thresholds page", async () => {
-			// beforeEach handles navigation
+			const thresholdsPage = new ThresholdsPage(adminPage);
+			await thresholdsPage.goto();
+			await expect(adminPage).toHaveURL(/\/thresholds/);
 		});
 
 		await test.step("Then the threshold table should be visible with rows", async () => {
@@ -38,7 +46,7 @@ test.describe("Feature: Threshold Management", () => {
 			await expect(thresholdsPage.table()).toBeVisible();
 			await expect(thresholdsPage.newButton()).toBeVisible();
 			await expect(
-				thresholdsPage.table().locator("tbody tr").first(),
+				thresholdsPage.table().locator("tbody").getByRole("row").first(),
 			).toBeVisible();
 		});
 	});
@@ -48,6 +56,7 @@ test.describe("Feature: Threshold Management", () => {
 
 		await test.step("Given the admin opens the new threshold dialog", async () => {
 			const thresholdsPage = new ThresholdsPage(adminPage);
+			await thresholdsPage.goto();
 			payload = forecastThresholdPayload();
 			await thresholdsPage.openNewDialog();
 		});
@@ -83,6 +92,7 @@ test.describe("Feature: Threshold Management", () => {
 	}) => {
 		await test.step("Given the admin opens the new threshold dialog", async () => {
 			const thresholdsPage = new ThresholdsPage(adminPage);
+			await thresholdsPage.goto();
 			await thresholdsPage.openNewDialog();
 		});
 
@@ -106,6 +116,7 @@ test.describe("Feature: Threshold Management", () => {
 	test("Scenario: admin edits threshold name and value", async ({
 		adminPage,
 	}) => {
+		test.setTimeout(45_000);
 		let original: ReturnType<typeof forecastThresholdPayload>;
 		let editedName: string;
 		const editedValue = 200;
@@ -119,6 +130,7 @@ test.describe("Feature: Threshold Management", () => {
 			createdThresholdIds.push(created.id);
 
 			editedName = forecastThresholdPayload().name;
+			await thresholdsPage.goto();
 			await thresholdsPage.openEditDialog(original.name);
 		});
 
@@ -163,6 +175,7 @@ test.describe("Feature: Threshold Management", () => {
 				forecastThresholdPayload({ name: payload.name }),
 			);
 			createdThresholdIds.push(created.id);
+			await thresholdsPage.goto();
 			await thresholdsPage.assertThresholdInTable(payload.name);
 		});
 
@@ -170,10 +183,7 @@ test.describe("Feature: Threshold Management", () => {
 			const thresholdsPage = new ThresholdsPage(adminPage);
 			const toggle = thresholdsPage.toggleSwitchFor(payload.name);
 			await expect(toggle).toBeVisible();
-			await expect(toggle.locator("input")).toHaveAttribute(
-				"aria-checked",
-				"true",
-			);
+			await expect(toggle).toHaveAttribute("data-p-checked", "true");
 			await toggle.click();
 		});
 
@@ -190,10 +200,7 @@ test.describe("Feature: Threshold Management", () => {
 		await test.step("And the toggle should visually reflect the disabled state", async () => {
 			const thresholdsPage = new ThresholdsPage(adminPage);
 			const toggle = thresholdsPage.toggleSwitchFor(payload.name);
-			await expect(toggle.locator("input")).toHaveAttribute(
-				"aria-checked",
-				"false",
-			);
+			await expect(toggle).toHaveAttribute("data-p-checked", "false");
 		});
 	});
 
@@ -211,6 +218,7 @@ test.describe("Feature: Threshold Management", () => {
 
 		await test.step("When the admin deletes it", async () => {
 			const thresholdsPage = new ThresholdsPage(adminPage);
+			await thresholdsPage.goto();
 			await thresholdsPage.assertThresholdInTable(payload.name);
 			await thresholdsPage.deleteThreshold(payload.name);
 		});

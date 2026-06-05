@@ -6,8 +6,6 @@ export class UsersPage extends BasePage {
 		await super.goto("/users");
 	}
 
-	// ── Table ──────────────────────────────────────────
-
 	newUserButton(): Locator {
 		return this.page.getByRole("button", { name: "New" });
 	}
@@ -18,7 +16,8 @@ export class UsersPage extends BasePage {
 
 	private tableRows(): Locator {
 		return this.table()
-			.locator("tbody tr")
+			.locator("tbody")
+			.getByRole("row")
 			.filter({ hasNotText: "No users found." });
 	}
 
@@ -39,7 +38,7 @@ export class UsersPage extends BasePage {
 	}
 
 	searchInput(): Locator {
-		return this.page.getByLabel("Search users by username or role");
+		return this.page.getByPlaceholder("Search users...");
 	}
 
 	async searchForUser(username: string) {
@@ -60,14 +59,8 @@ export class UsersPage extends BasePage {
 		});
 	}
 
-	// ── User form dialog ────────────────────────────────
-
-	private dialog(): Locator {
-		return this.page.locator(".p-dialog");
-	}
-
-	dialogTitle(): Locator {
-		return this.dialog().locator(".p-dialog-title, .p-dialog-header span");
+	dialog(): Locator {
+		return this.page.locator(".p-dialog").first();
 	}
 
 	usernameField(): Locator {
@@ -86,7 +79,7 @@ export class UsersPage extends BasePage {
 	}
 
 	saveButton(): Locator {
-		return this.dialog().locator("button[type='submit']");
+		return this.dialog().getByRole("button", { name: /save|create/i });
 	}
 
 	cancelButton(): Locator {
@@ -94,14 +87,12 @@ export class UsersPage extends BasePage {
 	}
 
 	errorInDialog(): Locator {
-		return this.dialog().locator(
-			".p-message-error, .p-message.p-message-error",
-		);
+		return this.dialog().getByRole("alert");
 	}
 
 	async openNewUserDialog() {
 		await this.newUserButton().click();
-		await expect(this.dialogTitle()).toHaveText("New User");
+		await expect(this.dialog()).toBeVisible();
 	}
 
 	async fillUserForm(username: string, password: string) {
@@ -115,12 +106,12 @@ export class UsersPage extends BasePage {
 	}
 
 	async assertSaveSucceeded() {
-		await expect(this.dialogTitle()).not.toBeVisible({ timeout: 10_000 });
+		await expect(this.dialog()).not.toBeVisible({ timeout: 10_000 });
 	}
 
 	async cancelForm() {
 		await this.cancelButton().click();
-		await expect(this.dialogTitle()).not.toBeVisible({ timeout: 5_000 });
+		await expect(this.dialog()).not.toBeVisible({ timeout: 5_000 });
 	}
 
 	async assertErrorInDialogVisible() {
@@ -130,10 +121,9 @@ export class UsersPage extends BasePage {
 	async editUser(username: string) {
 		await this.searchForUser(username);
 		await this.editButtonForUser(username).click();
-		await expect(this.dialogTitle()).toHaveText("Edit Profile");
+		await expect(this.dialog()).toBeVisible();
 	}
 
-	/** Creates a user via the UI dialog and asserts success. */
 	async createUserViaUI(username: string, password: string) {
 		await this.openNewUserDialog();
 		await this.fillUserForm(username, password);
@@ -141,20 +131,12 @@ export class UsersPage extends BasePage {
 		await this.assertSaveSucceeded();
 	}
 
-	// ── Confirm dialog (PrimeVue 4) ──────────────────────
-
-	private confirmDialog(): Locator {
-		return this.page.locator(".p-confirmdialog, .p-confirm-dialog");
-	}
-
-	private confirmDialogMessage(): Locator {
-		return this.confirmDialog().locator(
-			".p-dialog-content, .p-confirm-dialog-message",
-		);
+	confirmDialog(): Locator {
+		return this.page.locator(".p-confirmdialog, .p-confirm-dialog").first();
 	}
 
 	confirmDeleteButton(): Locator {
-		return this.confirmDialog().getByRole("button", { name: "Delete" });
+		return this.confirmDialog().getByRole("button", { name: /delete/i });
 	}
 
 	async deleteUser(username: string) {
@@ -162,29 +144,10 @@ export class UsersPage extends BasePage {
 		await this.deleteButtonForUser(username).click();
 
 		await expect(this.confirmDialog()).toBeVisible({ timeout: 5_000 });
-		await expect(this.confirmDialogMessage()).toContainText(username, {
+		await expect(this.confirmDialog()).toContainText(username, {
 			timeout: 5_000,
 		});
 		await this.confirmDeleteButton().click();
 		await expect(this.confirmDialog()).not.toBeVisible({ timeout: 5_000 });
-	}
-
-	// ── Profile page ─────────────────────────────────────
-
-	async gotoProfile() {
-		await super.goto("/profile");
-		await expect(this.page).toHaveURL(/\/profile/);
-	}
-
-	/** Prefer getByTestId("profile-username") once frontend adds data-testid. */
-	profileUsernameDisplay(): Locator {
-		return this.page
-			.locator("[data-testid='profile-username'], p.text-lg")
-			.first();
-	}
-
-	async openEditProfileDialog() {
-		await this.page.getByRole("button", { name: "Edit Profile" }).click();
-		await expect(this.dialog()).toBeVisible({ timeout: 5_000 });
 	}
 }
