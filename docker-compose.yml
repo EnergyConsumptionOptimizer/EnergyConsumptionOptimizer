@@ -104,8 +104,6 @@ x-monitoring-env: &monitoring-env
   HOOKUP_SERVICE_PORT: 3000
   MAP_SERVICE_HOST: map
   MAP_SERVICE_PORT: 3000
-  EXTERNAL_API_HOST: ${HOST_IP:-localhost}
-  EXTERNAL_API_PORT: ${HOST_PORT:-80}
   TZ: ${TZ:-Europe/Berlin}
   OTEL_SERVICE_NAME: "monitoring-service"
 
@@ -127,8 +125,7 @@ x-hookup-env: &hookup-env
   MONGO_DB: hookup
   USER_SERVICE_HOST: user
   USER_SERVICE_PORT: 3000
-  MONITORING_SERVICE_HOST: monitoring
-  MONITORING_SERVICE_PORT: 3000
+  DEVICE_INGESTION_URL: http://${HOST_IP:-localhost}:${HOST_PORT:-80}
   OTEL_SERVICE_NAME: "hookup-service"
 
 x-influx-env: &influx-env
@@ -194,7 +191,6 @@ services:
       - "traefik.http.services.frontend.loadbalancer.server.port=80"
       - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
       - "traefik.http.routers.frontend.entrypoints=web"
-      - "traefik.http.routers.frontend.service=frontend"
 
 
   # NODE.JS SERVICES
@@ -214,33 +210,31 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.user.loadbalancer.server.port=3000"
-      
-      # Public auth endpoints (Priority 30)
-      - "traefik.http.routers.user-public.rule=PathPrefix(`/user/api/auth`)"
-      - "traefik.http.routers.user-public.entrypoints=web"
-      - "traefik.http.routers.user-public.middlewares=user-strip"
-      - "traefik.http.routers.user-public.priority=30"
-      - "traefik.http.routers.user-public.service=user"
-      
-      # Admin reset-password
-      - "traefik.http.routers.user-admin.rule=PathPrefix(`/user/api/admin`)"
-      - "traefik.http.routers.user-admin.entrypoints=web"
-      - "traefik.http.routers.user-admin.middlewares=user-strip"
-      - "traefik.http.routers.user-admin.priority=30"
-      - "traefik.http.routers.user-admin.service=user"
-      
-      # Catch-all protected routes (Priority 20 — must beat frontend@15)
-      - "traefik.http.routers.user.rule=Path(`/user`) || PathPrefix(`/user/`)"
-      - "traefik.http.routers.user.entrypoints=web"
-      - "traefik.http.routers.user.middlewares=user-strip,forward-auth"
-      - "traefik.http.routers.user.priority=20"
-      
-      # Middlewares
       - "traefik.http.middlewares.user-strip.stripprefix.prefixes=/user"
+
+      # Shared forward-auth middleware — used by all protected routes across services
       - "traefik.http.middlewares.forward-auth.forwardauth.address=http://user:3000/api/internal/auth/verify"
       - "traefik.http.middlewares.forward-auth.forwardauth.authResponseHeaders=X-User-Id,X-User-Role,X-User-Username"
       - "traefik.http.middlewares.forward-auth.forwardauth.trustForwardHeader=false"
       - "traefik.http.middlewares.forward-auth.forwardauth.maxResponseBodySize=1048576"
+
+      # Public auth endpoints (priority 30 — beat user catch-all @20)
+      - "traefik.http.routers.user-public.rule=PathPrefix(`/user/api/auth`)"
+      - "traefik.http.routers.user-public.entrypoints=web"
+      - "traefik.http.routers.user-public.middlewares=user-strip"
+      - "traefik.http.routers.user-public.priority=30"
+
+      # Admin reset-password (public)
+      - "traefik.http.routers.user-admin.rule=PathPrefix(`/user/api/admin`)"
+      - "traefik.http.routers.user-admin.entrypoints=web"
+      - "traefik.http.routers.user-admin.middlewares=user-strip"
+      - "traefik.http.routers.user-admin.priority=30"
+
+      # Catch-all protected routes (priority 20 — must beat frontend @auto)
+      - "traefik.http.routers.user.rule=Path(`/user`) || PathPrefix(`/user/`)"
+      - "traefik.http.routers.user.entrypoints=web"
+      - "traefik.http.routers.user.middlewares=user-strip,forward-auth"
+      - "traefik.http.routers.user.priority=20"
 
   threshold:
     container_name: threshold-service
@@ -283,7 +277,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.notification.loadbalancer.server.port=3000"
-      - "traefik.http.routers.notification.rule=PathPrefix(`/notification`)"
+      - "traefik.http.routers.notification.rule=PathPrefix(`/notification/api`)"
       - "traefik.http.routers.notification.entrypoints=web"
       - "traefik.http.routers.notification.middlewares=notification-strip,forward-auth"
       - "traefik.http.middlewares.notification-strip.stripprefix.prefixes=/notification"
@@ -294,7 +288,6 @@ services:
     restart: unless-stopped
     networks:
       - internal
-      - external
     environment:
       <<: [*monitoring-env, *otel-env]
     depends_on:
@@ -304,15 +297,21 @@ services:
         condition: service_completed_successfully
     healthcheck: *backend-healthcheck
     logging: *common-logging
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.monitoring.loadbalancer.server.port=3000"
-      - "traefik.http.routers.monitoring.rule=PathPrefix(`/monitoring`)"
-      - "traefik.http.routers.monitoring.entrypoints=web"
-      - "traefik.http.routers.monitoring.middlewares=monitoring-strip,forward-auth"
       - "traefik.http.middlewares.monitoring-strip.stripprefix.prefixes=/monitoring"
+      - "traefik.http.routers.monitoring-ingest.rule=PathPrefix(`/api/measurements`)"
+      - "traefik.http.routers.monitoring-ingest.entrypoints=web"
+      - "traefik.http.routers.monitoring-ingest.priority=50"
+      - "traefik.http.routers.monitoring-ws-meters.rule=PathPrefix(`/monitoring/utility-meters`)"
+      - "traefik.http.routers.monitoring-ws-meters.entrypoints=web"
+      - "traefik.http.routers.monitoring-ws-meters.priority=46"
+      - "traefik.http.routers.monitoring-ws-meters.middlewares=monitoring-strip"
+      - "traefik.http.routers.monitoring-catchall.rule=PathPrefix(`/monitoring`)"
+      - "traefik.http.routers.monitoring-catchall.entrypoints=web"
+      - "traefik.http.routers.monitoring-catchall.priority=40"
+      - "traefik.http.routers.monitoring-catchall.middlewares=monitoring-strip,forward-auth"
 
   hookup:
     container_name: hookup-service
@@ -320,6 +319,7 @@ services:
     restart: unless-stopped
     networks:
       - internal
+      - external
     environment:
       <<: [*hookup-env, *otel-env]
     depends_on:
@@ -327,10 +327,12 @@ services:
         condition: service_healthy
     healthcheck: *backend-healthcheck
     logging: *common-logging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.hookup.loadbalancer.server.port=3000"
-      - "traefik.http.routers.hookup.rule=PathPrefix(`/hookup`)"
+      - "traefik.http.routers.hookup.rule=PathPrefix(`/hookup/api`)"
       - "traefik.http.routers.hookup.entrypoints=web"
       - "traefik.http.routers.hookup.middlewares=hookup-strip,forward-auth"
       - "traefik.http.middlewares.hookup-strip.stripprefix.prefixes=/hookup"
@@ -353,7 +355,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.map.loadbalancer.server.port=3000"
-      - "traefik.http.routers.map.rule=PathPrefix(`/map`)"
+      - "traefik.http.routers.map.rule=PathPrefix(`/map/api`)"
       - "traefik.http.routers.map.entrypoints=web"
       - "traefik.http.routers.map.middlewares=map-strip,forward-auth"
       - "traefik.http.middlewares.map-strip.stripprefix.prefixes=/map"
@@ -376,7 +378,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.forecast.loadbalancer.server.port=3000"
-      - "traefik.http.routers.forecast.rule=PathPrefix(`/forecast`)"
+      - "traefik.http.routers.forecast.rule=PathPrefix(`/forecast/api`)"
       - "traefik.http.routers.forecast.entrypoints=web"
       - "traefik.http.routers.forecast.middlewares=forecast-strip,forward-auth"
       - "traefik.http.middlewares.forecast-strip.stripprefix.prefixes=/forecast"
@@ -386,7 +388,7 @@ services:
   mongodb:
     container_name: mongodb
     image: mongo:7.0
-    command: ["--replSet", "rs0"]
+    command: ["--replSet", "rs0", "--wiredTigerCacheSizeGB", "0.25"]
     restart: unless-stopped
     networks:
       - internal
@@ -437,6 +439,7 @@ services:
     networks:
       - internal
     environment:
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
@@ -494,6 +497,7 @@ services:
       mongo-setup:
         condition: service_completed_successfully
     environment:
+      KAFKA_HEAP_OPTS: -Xms128m -Xmx256m
       CONNECT_BOOTSTRAP_SERVERS: kafka:9092
       CONNECT_REST_PORT: 8083
       CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
@@ -536,94 +540,6 @@ services:
     volumes:
       - ./kafka-connect/configs:/etc/kafka-connect/configs:ro
 
-# OBSERVABILITY
-  prometheus:
-    image: prom/prometheus:v3.11.3
-    container_name: prometheus
-    restart: unless-stopped
-    ports:
-      - "9090:9090"
-    networks:
-      - internal
-    volumes:
-      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=15d'
-      - '--web.enable-lifecycle'
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-
-  grafana:
-    image: grafana/grafana:12.0.1
-    container_name: grafana
-    restart: unless-stopped
-    depends_on:
-      - prometheus
-    networks:
-      - internal
-    environment:
-      GF_AUTH_ANONYMOUS_ENABLED: 'true'
-      GF_AUTH_ANONYMOUS_ORG_ROLE: 'Admin'
-      GF_SERVER_HTTP_PORT: '9091'
-    volumes:
-      - ./observability/grafana/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./observability/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./observability/grafana/dashboards/json:/var/lib/grafana/dashboards:ro
-      - grafana_data:/var/lib/grafana
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:9091/api/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-
-  loki:
-    image: grafana/loki:3.6.10
-    container_name: loki
-    restart: unless-stopped
-    ports:
-      - "3100:3100"
-    networks:
-      - internal
-    logging: *common-logging
-
-  tempo:
-    image: grafana/tempo:2.9.0
-    container_name: tempo
-    restart: unless-stopped
-    command:
-      - "-config.file=/etc/tempo/tempo.yaml"
-    volumes:
-      - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
-      - tempo_data:/var/tempo
-    networks:
-      - internal
-    logging: *common-logging
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3200/ready"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 10s
-
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.151.0
-    container_name: otel-collector
-    restart: unless-stopped
-    volumes:
-      - ./observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
-    ports:
-      - "4318:4318"
-      - "8889:8889"
-    networks:
-      - internal
-    logging: *common-logging
-
 # NETWORKS
 networks:
   internal:
@@ -639,6 +555,3 @@ volumes:
   mongodb-data:
   influxdb-data:
   kafka-data:
-  prometheus_data:
-  grafana_data:
-  tempo_data:

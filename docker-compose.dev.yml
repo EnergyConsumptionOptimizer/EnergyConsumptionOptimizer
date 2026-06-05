@@ -19,7 +19,7 @@ services:
       target: dev
     ports:
       - "8080:80"
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 80 --strictPort false"
+    command: npm run dev -- --host 0.0.0.0 --port 80 --strictPort false
     develop:
       watch:
         - action: sync
@@ -43,7 +43,7 @@ services:
       target: dev
     ports:
       - "3001:3000"
-    command: sh -c "npm install && npm run start:dev"
+    command: npm run start:dev
     develop:
       watch:
         - action: sync
@@ -63,7 +63,7 @@ services:
       target: dev
     ports:
       - "3002:3000"
-    command: sh -c "npm install && npm run start:dev"
+    command: npm run start:dev
     develop:
       watch:
         - action: sync
@@ -83,7 +83,7 @@ services:
       target: dev
     ports:
       - "3004:3000"
-    command: sh -c "npm install && npm run start:dev"
+    command: npm run start:dev
     develop:
       watch:
         - action: sync
@@ -103,7 +103,7 @@ services:
       target: dev
     ports:
       - "3005:3000"
-    command: sh -c "npm install && npm run start:dev"
+    command: npm run start:dev
     develop:
       watch:
         - action: sync
@@ -123,7 +123,7 @@ services:
       target: dev
     ports:
       - "3007:3000"
-    command: sh -c "npm install && npm run start:dev"
+    command: npm run start:dev
     develop:
       watch:
         - action: sync
@@ -141,15 +141,15 @@ services:
     image: forecast:local-dev
     build:
       context: ../forecast-service
-      target: build
+      target: dev
     ports:
       - "3003:3000"
-    command: gradle run --continuous --no-daemon
+    command: sh -c "gradle jar --no-daemon --parallel -x test -x check && java -Xmx256m -jar /app/build/libs/app.jar"
     volumes:
       - forecast-gradle-cache:/home/gradle/.gradle
     develop:
       watch:
-        - action: sync
+        - action: sync+restart
           path: ../forecast-service/src
           target: /app/src
         - action: sync+restart
@@ -158,34 +158,30 @@ services:
         - action: sync+restart
           path: ../forecast-service/settings.gradle.kts
           target: /app/settings.gradle.kts
+        - action: sync+restart
+          path: ../forecast-service/gradle.properties
+          target: /app/gradle.properties
 
   map:
     image: map:local-dev
     build:
       context: ../map-service
-      target: build
+      target: dev
     ports:
       - "3006:3000"
-    command: gradle run --continuous --no-daemon
-    volumes:
-      - map-gradle-cache:/home/gradle/.gradle
+    command: npm run start:dev
     develop:
       watch:
         - action: sync
           path: ../map-service/src
           target: /app/src
         - action: sync+restart
-          path: ../map-service/build.gradle.kts
-          target: /app/build.gradle.kts
+          path: ../map-service/package.json
+          target: /app/package.json
         - action: sync+restart
-          path: ../map-service/settings.gradle.kts
-          target: /app/settings.gradle.kts
+          path: ../map-service/tsconfig.json
+          target: /app/tsconfig.json
 
-
-# OBSERVABILITY
-  grafana:
-    ports:
-      - "9091:9091"
 
 # INFRASTRUCTURE
   kafka:
