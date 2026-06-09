@@ -122,6 +122,7 @@ x-map-env: &map-env
   USER_SERVICE_HOST: user
   USER_SERVICE_PORT: 3000
   OTEL_SERVICE_NAME: "map-service"
+  KAFKA_TOPIC_HOOKUP: "hookup-events"
 
 x-hookup-env: &hookup-env
   NAME: hookup
