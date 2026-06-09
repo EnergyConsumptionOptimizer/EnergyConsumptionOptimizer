@@ -56,7 +56,6 @@ x-threshold-env: &threshold-env
   KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
   KAFKA_GROUP_ID: "threshold-service-group"
   KAFKA_TOPIC_FORECASTS: "forecast-events"
-  KAFKA_TOPIC_FORECASTS_DLQ: "threshold-dlq"
   MONITORING_SERVICE_HOST: monitoring
   MONITORING_SERVICE_PORT: 3000
   OTEL_SERVICE_NAME: "threshold-service"
@@ -91,11 +90,18 @@ x-notification-env: &notification-env
 x-monitoring-env: &monitoring-env
   NAME: monitoring
   PORT: 3000
+  KAFKA_TOPIC_USER: "user-events"
+  KAFKA_TOPIC_MAP: "map-events"
+  KAFKA_TOPIC_HOOKUP: "hookup-events"
   INFLUXDB_HOST: influxdb
   INFLUXDB_PORT: 8086
   INFLUX_ORG: ${DOCKER_INFLUXDB_INIT_ORG:-eco}
   INFLUX_BUCKET: ${DOCKER_INFLUXDB_INIT_BUCKET:-monitoring}
   INFLUX_TOKEN: ${DOCKER_INFLUXDB_INIT_ADMIN_TOKEN:?missing TOKEN}
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  REDIS_PASSWORD: ${REDIS_PASSWORD:? missing REDIS_PASSWORD}
+  REDIS_DB: 0
   USER_SERVICE_HOST: user
   USER_SERVICE_PORT: 3000
   THRESHOLD_SERVICE_HOST: threshold
@@ -439,7 +445,6 @@ services:
     networks:
       - internal
     environment:
-      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
@@ -497,7 +502,6 @@ services:
       mongo-setup:
         condition: service_completed_successfully
     environment:
-      KAFKA_HEAP_OPTS: -Xms128m -Xmx256m
       CONNECT_BOOTSTRAP_SERVERS: kafka:9092
       CONNECT_REST_PORT: 8083
       CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
@@ -540,6 +544,23 @@ services:
     volumes:
       - ./kafka-connect/configs:/etc/kafka-connect/configs:ro
 
+  redis:
+    image: redis:latest
+    container_name: redis
+    networks:
+      - internal
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    environment:
+      - REDIS_ARGS=--requirepass ${REDIS_PASSWORD:? missing REDIS_PASSWORD} --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *common-logging
+
 # NETWORKS
 networks:
   internal:
@@ -555,3 +576,5 @@ volumes:
   mongodb-data:
   influxdb-data:
   kafka-data:
+  redis-data:
+    driver: local
