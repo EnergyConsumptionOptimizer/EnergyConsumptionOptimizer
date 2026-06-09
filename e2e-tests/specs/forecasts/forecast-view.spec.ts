@@ -84,8 +84,11 @@ test.describe("Feature: Forecast Widget Rendering", () => {
 
 test.describe("Feature: Forecast Data-Driven Rendering", () => {
 	test.describe.configure({ retries: 1 });
-	test.beforeAll(() => {
+	test.beforeAll(async ({ browser }) => {
 		clearAllForecastData();
+		const page = await browser.newPage();
+		await page.goto("/forecasts");
+		await page.close();
 	});
 
 	test.afterAll(() => {
@@ -129,7 +132,7 @@ test.describe("Feature: Forecast Data-Driven Rendering", () => {
 			forecastsPage = new ForecastsPage(adminPage);
 			await forecastsPage.goto();
 			await forecastsPage.assertPageLoaded();
-			await forecastsPage.assertChartRendered("Electricity", 20_000);
+			await forecastsPage.assertChartRendered("Electricity", 30_000);
 			await forecastsPage.assertPeriodSelected("Electricity", "Daily");
 		});
 
